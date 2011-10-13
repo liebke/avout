@@ -6,7 +6,9 @@
                                  AsyncCallback$StringCallback
                                  AsyncCallback$VoidCallback
                                  AsyncCallback$StatCallback
+                                 AsyncCallback$StatCallback
                                  AsyncCallback$Children2Callback
+                                 AsyncCallback$DataCallback
                                  Watcher$Event$KeeperState
                                  Watcher$Event$EventType)
            (org.apache.zookeeper.data Stat)))
@@ -72,6 +74,15 @@
                    :context context
                    :name name})))))
 
+(defn stat-callback
+  ([handler]
+     (reify AsyncCallback$StatCallback
+       (processResult [this return-code path context stat]
+         (handler {:return-code return-code
+                   :path path
+                   :context context
+                   :stat (stat-to-map stat)})))))
+
 (defn children-callback
   ([handler]
      (reify AsyncCallback$Children2Callback
@@ -90,6 +101,16 @@
                    :path path
                    :context context})))))
 
+(defn data-callback
+  ([handler]
+     (reify AsyncCallback$DataCallback
+       (processResult [this return-code path context data stat]
+         (handler {:return-code return-code
+                   :path path
+                   :context context
+                   :data data
+                   :stat (stat-to-map stat)})))))
+
 (defn promise-callback
   ([prom callback-fn]
      (fn [{:keys [return-code path context name] :as result}]
@@ -100,14 +121,80 @@
 ;; Public DSL
 
 (defn client
+  "Returns a ZooKeeper client."
   ([connection-string timeout-msec watcher-fn]
      (ZooKeeper. connection-string timeout-msec (watcher watcher-fn))))
 
 (defn exists
-  ([client path]
-     (exists client path false))
-  ([client path watcher-fn]
-     (stat-to-map (.exists client path (watcher watcher-fn)))))
+  "
+  Examples:
+
+    (use 'treeherd.client)
+    (def treeherd (client \"127.0.0.1:2181\" 120 #(println \"event received: \" %)))
+
+    (defn callback [result]
+      (println \"got callback result: \" result))
+
+    (exists treeherd \"/yadda\" :watch? true)
+    (create treeherd \"/yadda\")
+    (exists treeherd \"/yadda\")
+    (def p0 (exists treeherd \"/yadda\" :async? true))
+    @p0
+    (def p1 (exists treeherd \"/yadda\" :callback callback))
+    @p1
+"
+  ([client path & {:keys [watcher watch? async? callback context]
+                   :or {watch? false
+                        async? false
+                        context path}}]
+     (if (or async? callback)
+       (let [prom (promise)]
+         (.exists client path (if watcher (make-watcher watcher) watch?)
+                  (stat-callback (promise-callback prom callback)) context)
+         prom)
+       (stat-to-map (.exists client path (if watcher (make-watcher watcher) watch?))))))
+
+(defn data
+  "Returns byte array of data from given node.
+
+  Examples:
+
+    (use 'treeherd.client)
+    (def treeherd (client \"127.0.0.1:2181\" 120 #(println \"event received: \" %)))
+
+    (defn callback [result]
+      (println \"got callback result: \" result))
+
+    (delete-all treeherd \"/foo\")
+    (create treeherd \"/foo\" :persistent? true :data (.getBytes \"Hello World\"))
+    (def result (data treeherd \"/foo\"))
+    (String. (:data result))
+    (:stat result)
+
+    (def p0 (data treeherd \"/foo\" :async? true))
+    @p0
+    (String. (:data @p0))
+
+    (def p1 (data treeherd \"/foo\" :watch? true :callback callback))
+    @p1
+    (String. (:data @p1))
+
+    (create treeherd \"/foobar\" :persistent? true :data (.getBytes (pr-str {:a 1, :b 2, :c 3})))
+    (read-string (String. (:data (data treeherd \"/foobar\"))))
+
+"
+  ([client path & {:keys [watcher watch? async? callback context]
+                   :or {watch? false
+                        async? false
+                        context path}}]
+     (let [stat (Stat.)]
+       (if (or async? callback)
+        (let [prom (promise)]
+          (.getData client path (if watcher (make-watcher watcher) watch?)
+                    (data-callback (promise-callback prom callback)) context)
+          prom)
+        {:data (.getData client path (if watcher (make-watcher watcher) watch?) stat)
+         :stat (stat-to-map stat)}))))
 
 (defn create
   " Creates a node, returning either the node's name, or a promise with a result map if the done asynchronously. If an error occurs, create will return false.
@@ -228,22 +315,18 @@
      (if (or async? callback)
        (let [prom (promise)]
          (try
-           (if watcher
-             (seq (.getChildren client path (make-watcher watcher)
-                                (children-callback (promise-callback prom callback)) context))
-             (seq (.getChildren client path watch?
-                                (children-callback (promise-callback prom callback)) context)))
+           (seq (.getChildren client path
+                              (if watcher (make-watcher watcher) watch?)
+                              (children-callback (promise-callback prom callback)) context))
            (catch Exception _ (deliver prom false)))
          prom)
        (try
-         (if watcher
-           (seq (.getChildren client path (make-watcher watcher)))
-           (seq (.getChildren client path watch?)))
+         (seq (.getChildren client path (if watcher (make-watcher watcher) watch?)))
          (catch Exception _ false)))))
 
 (defn delete-all
-  ([client path]
+  ([client path & options]
      (doseq [child (or (children client path) nil)]
-       (delete-all client (str path "/" child)))
-     (delete client path)))
+       (apply delete-all client (str path "/" child) options))
+     (apply delete client path options)))
 
