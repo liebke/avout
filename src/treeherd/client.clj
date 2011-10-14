@@ -14,7 +14,9 @@
                                  Watcher$Event$EventType)
            (org.apache.zookeeper.data Stat
                                       Id
-                                      ACL)))
+                                      ACL)
+           (org.apache.commons.codec.digest DigestUtils)
+           (org.apache.commons.codec.binary Base64)))
 
 (def ^:dynamic *perms* {:write ZooDefs$Perms/WRITE
                         :read ZooDefs$Perms/READ
@@ -32,11 +34,11 @@
   ([perms & perm-keys]
      (apply bit-or (vals (select-keys perms perm-keys)))))
 
-(def acls {:open_acl_unsafe ZooDefs$Ids/OPEN_ACL_UNSAFE ;; This is a completely open ACL
-          :anyone_id_unsafe ZooDefs$Ids/ANYONE_ID_UNSAFE ;; This Id represents anyone
-          :auth_ids ZooDefs$Ids/AUTH_IDS ;; This Id is only usable to set ACLs
-          :creator_all_acl ZooDefs$Ids/CREATOR_ALL_ACL ;; This ACL gives the creators authentication id's all permissions
-          :read_all_acl ZooDefs$Ids/READ_ACL_UNSAFE ;; This ACL gives the world the ability to read
+(def acls {:open-acl-unsafe ZooDefs$Ids/OPEN_ACL_UNSAFE ;; This is a completely open ACL
+          :anyone-id-unsafe ZooDefs$Ids/ANYONE_ID_UNSAFE ;; This Id represents anyone
+          :auth-ids ZooDefs$Ids/AUTH_IDS ;; This Id is only usable to set ACLs
+          :creator-all-acl ZooDefs$Ids/CREATOR_ALL_ACL ;; This ACL gives the creators authentication id's all permissions
+          :read-all-acl ZooDefs$Ids/READ_ACL_UNSAFE ;; This ACL gives the world the ability to read
           })
 
 (def create-modes { ;; The znode will not be automatically deleted upon client's disconnect
@@ -141,7 +143,7 @@
 (defn client
   "Returns a ZooKeeper client."
   ([connection-string timeout-msec watcher-fn]
-     (ZooKeeper. connection-string timeout-msec (watcher watcher-fn))))
+     (ZooKeeper. connection-string timeout-msec (make-watcher watcher-fn))))
 
 (defn exists
   "
@@ -250,7 +252,7 @@
   ([client path & {:keys [data acl persistent? sequential? context callback async?]
                    :or {persistent? false
                         sequential? false
-                        acl (acls :open_acl_unsafe)
+                        acl (acls :open-acl-unsafe)
                         context path
                         async? false}}]
      (if (or async? callback)
@@ -350,6 +352,26 @@
 
 ;; ACL
 
+(defn hash-password
+  "
+  Examples:
+
+    (hash-password \"secret\")
+
+"
+  ([password]
+     (Base64/encodeBase64String (DigestUtils/sha password))))
+
+(defn get-acl
+  ([client path]
+     (let [stat (Stat.)]
+       {:acl (.getACL client path stat)
+        :stat (stat-to-map stat)})))
+
+(defn add-auth-info
+  ([client scheme auth]
+     (.addAuthInfo client scheme (if (string? auth) (.getBytes auth) auth))))
+
 (defn acl-id
   ([scheme id-value]
      (Id. scheme id-value)))
@@ -364,13 +386,22 @@
     (def open-acl-unsafe (acl \"world\" \"anyone\" :read :create :delete :admin :write))
     (create treeherd \"/mynode\" :acl [open-acl-unsafe])
 
-    (def ip-acl (acl \"ip\" \"10.0.1.13\" :read :create :delete :admin :write))
+    (def ip-acl (acl \"ip\" \"127.0.0.1\" :read :create :delete :admin :write))
     (create treeherd \"/mynode2\" :acl [ip-acl])
 
-    (.addAuthInfo treeherd \"digest\" (.getBytes \"david:secret\"))
-    (def digest-acl (acl  \"digest\" \"david:secret\" :read :create :delete :admin :write))
+    (add-auth-info treeherd \"digest\" \"david:secret\")
+
+    ;; works
+    ;; same as (acls :creator-all-acl)
+    (def auth-acl (acl \"auth\" \"\" :read :create :delete :admin :write))
+    (create treeherd \"/mynode4\" :acl [auth-acl])
+    (data treeherd \"/mynode4\")
+
+    ;; doesn't works
+    (def digest-acl (acl  \"digest\" (str \"david:\" (hash-password \"secret\")) :read :create :delete :admin :write))
     (create treeherd \"/mynode3\" :acl [digest-acl])
+    (data treeherd \"/mynode3\")
+
 "
   ([scheme id-value perm & more-perms]
      (ACL. (apply perm-or *perms* perm more-perms) (acl-id scheme id-value))))
-
