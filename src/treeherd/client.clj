@@ -344,14 +344,14 @@
 
     (def p0 (data treeherd \"/foo\" :async? true))
     @p0
-    (String. (:bytes @p0))
+    (String. (:data @p0))
 
     (def p1 (data treeherd \"/foo\" :watch? true :callback callback))
     @p1
-    (String. (:bytes @p1))
+    (String. (:data @p1))
 
     (create treeherd \"/foobar\" :persistent? true :data (.getBytes (pr-str {:a 1, :b 2, :c 3})))
-    (read-string (String. (:bytes (data treeherd \"/foobar\"))))
+    (read-string (String. (:data (data treeherd \"/foobar\"))))
 
 "
   ([client path & {:keys [watcher watch? async? callback context]
@@ -364,7 +364,7 @@
           (.getData client path (if watcher (make-watcher watcher) watch?)
                     (data-callback (promise-callback prom callback)) context)
           prom)
-        {:bytes (.getData client path (if watcher (make-watcher watcher) watch?) stat)
+        {:data (.getData client path (if watcher (make-watcher watcher) watch?) stat)
          :stat (stat-to-map stat)}))))
 
 (defn set-data
@@ -380,21 +380,18 @@
 
     (delete-all treeherd \"/foo\")
     (create treeherd \"/foo\" :persistent? true)
-    (set-data treeherd \"/foo\" (.getBytes \"Hello World\")) 0)
-    (def result (data treeherd \"/foo\"))
-    (String. (:data result))
-    (:stat result)
 
-    (def p0 (data treeherd \"/foo\" :async? true))
+    (set-data treeherd \"/foo\" (.getBytes \"Hello World\") 0)
+    (String. (:data (data treeherd \"/foo\")))
+
+
+    (def p0 (set-data treeherd \"/foo\" (.getBytes \"New Data\") 0 :async? true))
     @p0
-    (String. (:bytes @p0))
+    (String. (:data (data treeherd \"/foo\")))
 
-    (def p1 (data treeherd \"/foo\" :watch? true :callback callback))
+    (def p1 (set-data treeherd \"/foo\" (.getBytes \"Even Newer Data\") 1 :callback callback))
     @p1
-    (String. (:bytes @p1))
-
-    (create treeherd \"/foobar\" :persistent? true :data (.getBytes (pr-str {:a 1, :b 2, :c 3})))
-    (read-string (String. (:bytes (data treeherd \"/foobar\"))))
+    (String. (:data (data treeherd \"/foo\")))
 
 "
   ([client path data version & {:keys [async? callback context]
@@ -404,7 +401,7 @@
        (let [prom (promise)]
          (try
            (.setData client path data version
-                     (void-callback (promise-callback prom callback)) context)
+                     (stat-callback (promise-callback prom callback)) context)
            (catch Exception e (do (println e) (deliver prom false))))
          prom)
        (try
