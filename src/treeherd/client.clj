@@ -80,11 +80,15 @@
 (def keeper-states
   (into #{} (map #(keyword (.name %)) (Watcher$Event$KeeperState/values))))
 
+;; Watcher
+
 (defn make-watcher
   ([handler]
      (reify Watcher
        (process [this event]
          (handler (event-to-map event))))))
+
+;; Callbacks
 
 (defn string-callback
   ([handler]
@@ -185,48 +189,6 @@
                   (stat-callback (promise-callback prom callback)) context)
          prom)
        (stat-to-map (.exists client path (if watcher (make-watcher watcher) watch?))))))
-
-(defn data
-  "Returns byte array of data from given node.
-
-  Examples:
-
-    (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
-
-    (defn callback [result]
-      (println \"got callback result: \" result))
-
-    (delete-all treeherd \"/foo\")
-    (create treeherd \"/foo\" :persistent? true :data (.getBytes \"Hello World\"))
-    (def result (data treeherd \"/foo\"))
-    (String. (:data result))
-    (:stat result)
-
-    (def p0 (data treeherd \"/foo\" :async? true))
-    @p0
-    (String. (:bytes @p0))
-
-    (def p1 (data treeherd \"/foo\" :watch? true :callback callback))
-    @p1
-    (String. (:bytes @p1))
-
-    (create treeherd \"/foobar\" :persistent? true :data (.getBytes (pr-str {:a 1, :b 2, :c 3})))
-    (read-string (String. (:bytes (data treeherd \"/foobar\"))))
-
-"
-  ([client path & {:keys [watcher watch? async? callback context]
-                   :or {watch? false
-                        async? false
-                        context path}}]
-     (let [stat (Stat.)]
-       (if (or async? callback)
-        (let [prom (promise)]
-          (.getData client path (if watcher (make-watcher watcher) watch?)
-                    (data-callback (promise-callback prom callback)) context)
-          prom)
-        {:bytes (.getData client path (if watcher (make-watcher watcher) watch?) stat)
-         :stat (stat-to-map stat)}))))
 
 (defn create
   " Creates a node, returning either the node's name, or a promise with a result map if the done asynchronously. If an error occurs, create will return false.
@@ -357,10 +319,98 @@
          (catch Exception _ false)))))
 
 (defn delete-all
+  "Deletes a node and all of its children."
   ([client path & options]
      (doseq [child (or (children client path) nil)]
        (apply delete-all client (str path "/" child) options))
      (apply delete client path options)))
+
+(defn data
+  "Returns byte array of data from given node.
+
+  Examples:
+
+    (use 'treeherd.client)
+    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
+
+    (defn callback [result]
+      (println \"got callback result: \" result))
+
+    (delete-all treeherd \"/foo\")
+    (create treeherd \"/foo\" :persistent? true :data (.getBytes \"Hello World\"))
+    (def result (data treeherd \"/foo\"))
+    (String. (:data result))
+    (:stat result)
+
+    (def p0 (data treeherd \"/foo\" :async? true))
+    @p0
+    (String. (:bytes @p0))
+
+    (def p1 (data treeherd \"/foo\" :watch? true :callback callback))
+    @p1
+    (String. (:bytes @p1))
+
+    (create treeherd \"/foobar\" :persistent? true :data (.getBytes (pr-str {:a 1, :b 2, :c 3})))
+    (read-string (String. (:bytes (data treeherd \"/foobar\"))))
+
+"
+  ([client path & {:keys [watcher watch? async? callback context]
+                   :or {watch? false
+                        async? false
+                        context path}}]
+     (let [stat (Stat.)]
+       (if (or async? callback)
+        (let [prom (promise)]
+          (.getData client path (if watcher (make-watcher watcher) watch?)
+                    (data-callback (promise-callback prom callback)) context)
+          prom)
+        {:bytes (.getData client path (if watcher (make-watcher watcher) watch?) stat)
+         :stat (stat-to-map stat)}))))
+
+(defn set-data
+  "
+
+  Examples:
+
+    (use 'treeherd.client)
+    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
+
+    (defn callback [result]
+      (println \"got callback result: \" result))
+
+    (delete-all treeherd \"/foo\")
+    (create treeherd \"/foo\" :persistent? true)
+    (set-data treeherd \"/foo\" (.getBytes \"Hello World\")) 0)
+    (def result (data treeherd \"/foo\"))
+    (String. (:data result))
+    (:stat result)
+
+    (def p0 (data treeherd \"/foo\" :async? true))
+    @p0
+    (String. (:bytes @p0))
+
+    (def p1 (data treeherd \"/foo\" :watch? true :callback callback))
+    @p1
+    (String. (:bytes @p1))
+
+    (create treeherd \"/foobar\" :persistent? true :data (.getBytes (pr-str {:a 1, :b 2, :c 3})))
+    (read-string (String. (:bytes (data treeherd \"/foobar\"))))
+
+"
+  ([client path data version & {:keys [async? callback context]
+                                :or {async? false
+                                     context path}}]
+     (if (or async? callback)
+       (let [prom (promise)]
+         (try
+           (.setData client path data version
+                     (void-callback (promise-callback prom callback)) context)
+           (catch Exception e (do (println e) (deliver prom false))))
+         prom)
+       (try
+         (.setData client path data version)
+         (catch Exception e (do (println e) false))))))
+
 
 ;; ACL
 
@@ -409,6 +459,7 @@
           :stat (stat-to-map stat)}))))
 
 (defn add-auth-info
+  "Add auth info to connection."
   ([client scheme auth]
      (.addAuthInfo client scheme (if (string? auth) (.getBytes auth) auth))))
 
