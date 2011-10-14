@@ -3,6 +3,7 @@
                                  CreateMode
                                  Watcher
                                  ZooDefs$Ids
+                                 ZooDefs$Perms
                                  AsyncCallback$StringCallback
                                  AsyncCallback$VoidCallback
                                  AsyncCallback$StatCallback
@@ -11,8 +12,25 @@
                                  AsyncCallback$DataCallback
                                  Watcher$Event$KeeperState
                                  Watcher$Event$EventType)
-           (org.apache.zookeeper.data Stat)))
+           (org.apache.zookeeper.data Stat
+                                      Id
+                                      ACL)))
 
+(def ^:dynamic *perms* {:write ZooDefs$Perms/WRITE
+                        :read ZooDefs$Perms/READ
+                        :delete ZooDefs$Perms/DELETE
+                        :create ZooDefs$Perms/CREATE
+                        :admin ZooDefs$Perms/ADMIN})
+
+(defn perm-or
+  "
+  Examples:
+
+    (use 'treeherd.client)
+    (perm-or *perms* :read :write :create)
+"
+  ([perms & perm-keys]
+     (apply bit-or (vals (select-keys perms perm-keys)))))
 
 (def acls {:open_acl_unsafe ZooDefs$Ids/OPEN_ACL_UNSAFE ;; This is a completely open ACL
           :anyone_id_unsafe ZooDefs$Ids/ANYONE_ID_UNSAFE ;; This Id represents anyone
@@ -173,14 +191,14 @@
 
     (def p0 (data treeherd \"/foo\" :async? true))
     @p0
-    (String. (:data @p0))
+    (String. (:bytes @p0))
 
     (def p1 (data treeherd \"/foo\" :watch? true :callback callback))
     @p1
-    (String. (:data @p1))
+    (String. (:bytes @p1))
 
     (create treeherd \"/foobar\" :persistent? true :data (.getBytes (pr-str {:a 1, :b 2, :c 3})))
-    (read-string (String. (:data (data treeherd \"/foobar\"))))
+    (read-string (String. (:bytes (data treeherd \"/foobar\"))))
 
 "
   ([client path & {:keys [watcher watch? async? callback context]
@@ -193,7 +211,7 @@
           (.getData client path (if watcher (make-watcher watcher) watch?)
                     (data-callback (promise-callback prom callback)) context)
           prom)
-        {:data (.getData client path (if watcher (make-watcher watcher) watch?) stat)
+        {:bytes (.getData client path (if watcher (make-watcher watcher) watch?) stat)
          :stat (stat-to-map stat)}))))
 
 (defn create
@@ -232,22 +250,22 @@
   ([client path & {:keys [data acl persistent? sequential? context callback async?]
                    :or {persistent? false
                         sequential? false
-                        acl :open_acl_unsafe
+                        acl (acls :open_acl_unsafe)
                         context path
                         async? false}}]
      (if (or async? callback)
        (let [prom (promise)]
          (try
-           (.create client path data (acls acl)
+           (.create client path data acl
                     (create-modes {:persistent? persistent?, :sequential? sequential?})
                     (string-callback (promise-callback prom callback))
                     context)
-           (catch Exception _ (deliver prom false)))
+           (catch Exception e (do (println e) (deliver prom false))))
          prom)
        (try
-         (.create client path data (acls acl)
+         (.create client path data acl
                   (create-modes {:persistent? persistent?, :sequential? sequential?}))
-         (catch Exception _ false)))))
+         (catch Exception e (do (println e) false))))))
 
 (defn delete
   "Deletes the given node, if it exists
@@ -329,4 +347,30 @@
      (doseq [child (or (children client path) nil)]
        (apply delete-all client (str path "/" child) options))
      (apply delete client path options)))
+
+;; ACL
+
+(defn acl-id
+  ([scheme id-value]
+     (Id. scheme id-value)))
+
+(defn acl
+  "
+  Examples:
+
+    (use 'treeherd.client)
+    (def treeherd (client \"127.0.0.1:2181\" 120 #(println \"event received: \" %)))
+
+    (def open-acl-unsafe (acl \"world\" \"anyone\" :read :create :delete :admin :write))
+    (create treeherd \"/mynode\" :acl [open-acl-unsafe])
+
+    (def ip-acl (acl \"ip\" \"10.0.1.13\" :read :create :delete :admin :write))
+    (create treeherd \"/mynode2\" :acl [ip-acl])
+
+    (.addAuthInfo treeherd \"digest\" (.getBytes \"david:secret\"))
+    (def digest-acl (acl  \"digest\" \"david:secret\" :read :create :delete :admin :write))
+    (create treeherd \"/mynode3\" :acl [digest-acl])
+"
+  ([scheme id-value perm & more-perms]
+     (ACL. (apply perm-or *perms* perm more-perms) (acl-id scheme id-value))))
 
