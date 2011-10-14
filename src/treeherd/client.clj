@@ -497,3 +497,9 @@
 "
   ([scheme id-value perm & more-perms]
      (ACL. (apply perm-or *perms* perm more-perms) (acl-id scheme id-value))))
+
+
+
+
+
+
