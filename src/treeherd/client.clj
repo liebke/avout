@@ -10,6 +10,7 @@
                                  AsyncCallback$StatCallback
                                  AsyncCallback$Children2Callback
                                  AsyncCallback$DataCallback
+                                 AsyncCallback$ACLCallback
                                  Watcher$Event$KeeperState
                                  Watcher$Event$EventType)
            (org.apache.zookeeper.data Stat
@@ -131,6 +132,16 @@
                    :data data
                    :stat (stat-to-map stat)})))))
 
+(defn acl-callback
+  ([handler]
+     (reify AsyncCallback$ACLCallback
+       (processResult [this return-code path context acl stat]
+         (handler {:return-code return-code
+                   :path path
+                   :context context
+                   :acl (seq acl)
+                   :stat (stat-to-map stat)})))))
+
 (defn promise-callback
   ([prom callback-fn]
      (fn [{:keys [return-code path context name] :as result}]
@@ -142,15 +153,16 @@
 
 (defn client
   "Returns a ZooKeeper client."
-  ([connection-string timeout-msec watcher-fn]
-     (ZooKeeper. connection-string timeout-msec (make-watcher watcher-fn))))
+  ([connection-string & {:keys [timeout-msec watcher]
+                         :or {timeout-msec 1000}}]
+     (ZooKeeper. connection-string timeout-msec (when watcher (make-watcher watcher)))))
 
 (defn exists
   "
   Examples:
 
     (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" 120 #(println \"event received: \" %)))
+    (def treeherd (client \"127.0.0.1:2181\" :wacher #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
@@ -180,7 +192,7 @@
   Examples:
 
     (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" 120 #(println \"event received: \" %)))
+    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
@@ -232,7 +244,7 @@
   Example:
 
     (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" 120 #(println \"event received: \" %)))
+    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
@@ -275,7 +287,7 @@
   Examples:
 
     (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" 120 #(println \"event received: \" %)))
+    (def treeherd (client \"127.0.0.1:2181\" :watch #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
@@ -308,7 +320,7 @@
   Examples:
 
     (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" 120 #(println \"event received: \" %)))
+    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
@@ -353,7 +365,8 @@
 ;; ACL
 
 (defn hash-password
-  "
+  " Returns a base64 encoded string of a SHA-1 digest of the given password string.
+
   Examples:
 
     (hash-password \"secret\")
@@ -363,10 +376,37 @@
      (Base64/encodeBase64String (DigestUtils/sha password))))
 
 (defn get-acl
-  ([client path]
+ "
+  Examples:
+
+    (use 'treeherd.client)
+    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
+    (add-auth-info treeherd \"digest\" \"david:secret\")
+
+    (defn callback [result]
+      (println \"got callback result: \" result))
+
+    (delete-all treeherd \"/foo\")
+    (create treeherd \"/foo\" :acl [(acl \"auth\" \"\" :read :write :create :delete)])
+    (get-acl treeherd \"/foo\")
+
+    (def p0 (get-acl treeherd \"/foo\" :async? true))
+
+    (def p1 (get-acl treeherd \"/foo\" :callback callback))
+
+"
+  ([client path & {:keys [async? callback context]
+                   :or {async? false
+                        context path}}]
      (let [stat (Stat.)]
-       {:acl (.getACL client path stat)
-        :stat (stat-to-map stat)})))
+       (if (or async? callback)
+         (let [prom (promise)]
+           (try
+             (.getACL client path stat (acl-callback (promise-callback prom callback)) context)
+             (catch Exception _ (deliver prom false)))
+         prom)
+         {:acl (seq (.getACL client path stat))
+          :stat (stat-to-map stat)}))))
 
 (defn add-auth-info
   ([client scheme auth]
@@ -381,7 +421,7 @@
   Examples:
 
     (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" 120 #(println \"event received: \" %)))
+    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
 
     (def open-acl-unsafe (acl \"world\" \"anyone\" :read :create :delete :admin :write))
     (create treeherd \"/mynode\" :acl [open-acl-unsafe])
@@ -395,6 +435,10 @@
     ;; same as (acls :creator-all-acl)
     (def auth-acl (acl \"auth\" \"\" :read :create :delete :admin :write))
     (create treeherd \"/mynode4\" :acl [auth-acl])
+    (data treeherd \"/mynode4\")
+
+    ;; change auth-info
+    (add-auth-info treeherd \"digest\" \"edgar:secret\")
     (data treeherd \"/mynode4\")
 
     ;; doesn't works
