@@ -17,7 +17,8 @@
                                       Id
                                       ACL)
            (org.apache.commons.codec.digest DigestUtils)
-           (org.apache.commons.codec.binary Base64)))
+           (org.apache.commons.codec.binary Base64))
+  (:require [clojure.string :as s]))
 
 (def ^:dynamic *perms* {:write ZooDefs$Perms/WRITE
                         :read ZooDefs$Perms/READ
@@ -198,7 +199,7 @@
     :persistent? indicates if the node should be persistent
     :sequential? indicates if the node should be sequential
     :data data to associate with the node
-    :acl access control keyword, see the acls map
+    :acl access control, see the acls map
     :async? indicates that the create should occur asynchronously, a promise will be returned
     :callback indicates that the create should occur asynchronously and that this function should be called when it does, a promise will also be returned
 
@@ -324,6 +325,30 @@
      (doseq [child (or (children client path) nil)]
        (apply delete-all client (str path "/" child) options))
      (apply delete client path options)))
+
+(defn create-all
+  "Create a node and all of its parents. The last node will be ephemeral,
+   and its parents will be persistent. Option, like :persistent? :sequential?,
+   :acl, will only be applied to the last child node.
+
+  Examples:
+  (delete-all treeherd \"/foo\")
+  (create-all treeherd \"/foo/bar/baz\" :persistent? true)
+  (create-all treeherd \"/foo/bar/baz/n-\" :sequential? true)
+
+
+"
+  ([client path & options]
+     (loop [parent "" [child & children] (rest (s/split path #"/"))]
+       (if child
+         (let [node (str parent "/" child)]
+           (if (exists client node)
+             (recur node children)
+             (recur (if (seq children)
+                      (create client node :persistent? true)
+                      (apply create client node options))
+                    children)))
+         parent))))
 
 (defn data
   "Returns byte array of data from given node.
