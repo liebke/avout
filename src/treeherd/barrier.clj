@@ -3,6 +3,7 @@
   (:import (java.net InetAddress)))
 
 ;; http://wiki.apache.org/hadoop/ZooKeeper/Tutorial
+;; http://zookeeper.apache.org/doc/r3.3.3/recipes.html
 
 (defn host-name
   ([] (-> (InetAddress/getLocalHost) .getCanonicalHostName)))
@@ -63,7 +64,7 @@
   ([client barrier-node N f & {:keys [proc-name leave-on-completion?]
                                :or {proc-name (host-name)
                                     leave-on-completion? true}}]
-     (if-not (tc/exists client barrier-node)
+     (when-not (tc/exists client barrier-node)
        (tc/create client barrier-node :persistent? true))
      (tc/create client (str barrier-node "/" proc-name))
      (future
