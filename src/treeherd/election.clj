@@ -50,33 +50,52 @@
     ;; and look at the new leader
     (deref (:leader election-results))
 
+
+
+    ;; ALT
+    (use '(treeherd client election))
+    (def treeherd (client \"127.0.0.1:2181\"))
+    (delete-all treeherd \"/election\")
+
+
+    (create treeherd \"/election\" :persistent? true)
+    (repeatedly 5 #(create treeherd \"/election/n-\" :sequential? true))
+    (def election-results (enter-election treeherd \"/election\"))
+    (deref (:leader election-results))
+    (delete treeherd (deref (:leader election-results)))
+
+    (deref (:leader election-results))
+    (delete treeherd (deref (:leader election-results)))
+
+    (deref (:leader election-results))
+    (delete treeherd (deref (:leader election-results)))
 "
   ([client election-node]
      (when-not (tc/exists client election-node)
        (tc/create client election-node :persistent? true))
-     (let [;;mutex (Object.)
+     (let [mutex (Object.)
            path (str election-node "/n-")
            name (tc/create client path :sequential? true)
            id (Integer. (subs name (count path)))
-           watcher (fn [event] (do (println "watched event: " event) (locking client (.notify client))))
+           watcher (fn [event] (do (println "watched event: " event) (locking mutex (.notify mutex))))
            id-ref (ref [name id])
            leader-ref (ref nil)]
        (future
-         (locking client
-           (loop [candidates (process-candidates election-node @id-ref (tc/children client election-node :watcher watcher))]
-             (println "candidates" candidates)
-             (when (seq candidates)
+         (locking mutex
+           (loop [children (tc/children client election-node :watcher watcher)]
+             (if (seq children)
                (do
-                 (println (leader candidates))
-                 (dosync (alter leader-ref (fn [_] (leader candidates))))
-                 (.wait client)
-                 (recur (process-candidates election-node @id-ref (tc/children client election-node :watcher watcher))))))))
+                 (dosync (alter leader-ref (fn [_] (leader (process-candidates election-node @id-ref children)))))
+                 (.wait mutex)
+                 (recur (tc/children client election-node :watcher watcher)))
+               (dosync (alter leader-ref (fn [_] nil)))))))
        {:id id-ref :leader leader-ref})))
 
 
 (defn leave-election
   ([client id]
-     (let [watcher (fn [event]
+     (let [mutex (Object.)
+           watcher (fn [event]
                      (do (println "leave-election: watched event: " event)
-                         (locking client (.notify client))))]
+                         (locking mutex (.notify mutex))))]
        (tc/delete client id :watcher watcher))))

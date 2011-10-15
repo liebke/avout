@@ -2,8 +2,12 @@
   (:require [treeherd.client :as tc])
   (:import (java.net InetAddress)))
 
+;; http://zookeeper.apache.org/doc/r3.3.3/api/index.html
 ;; http://wiki.apache.org/hadoop/ZooKeeper/Tutorial
 ;; http://zookeeper.apache.org/doc/r3.3.3/recipes.html
+;; http://zookeeper.apache.org/doc/r3.3.3/zookeeperProgrammers.html
+;; http://highscalability.com/blog/2008/7/15/zookeeper-a-reliable-scalable-distributed-coordination-syste.html
+
 
 (defn host-name
   ([] (-> (InetAddress/getLocalHost) .getCanonicalHostName)))
