@@ -10,11 +10,11 @@
          (recur remaining next)))))
 
 (defn sort-candidates
-  ([election-node id children]
+  ([election-node id unsorted-candidates]
      (let [path "/n-"
            path-size (count path)
            extract-id (fn [child-path] [(str election-node "/" child-path) (Integer. (subs child-path path-size))])
-           candidates (sort-by second (map extract-id children))
+           candidates (sort-by second (map extract-id unsorted-candidates))
            ;;node-to-watch (next-lowest id candidates)
            ]
 ;;       (println "get-candidates id node-to-watch " id node-to-watch)
@@ -71,15 +71,15 @@
 "
   ([client election-node local-candidate]
      (let [mutex (Object.)
-           watcher (fn [event] (do (println "watched event: " event) (locking mutex (.notify mutex))))
+           watcher (fn [event] (locking mutex (.notify mutex)))
            leader (fn [candidates] (-> candidates first first))
            leader-ref (ref nil)]
        (future
          (locking mutex
-           (loop [children (tc/children client election-node :watcher watcher)]
-             (if (seq children)
+           (loop [candidates (tc/children client election-node :watcher watcher)]
+             (if (seq candidates)
                (do
-                 (dosync (alter leader-ref (fn [_] (leader (sort-candidates election-node local-candidate children)))))
+                 (dosync (alter leader-ref (fn [_] (leader (sort-candidates election-node local-candidate candidates)))))
                  (.wait mutex)
                  (recur (tc/children client election-node :watcher watcher)))
                (dosync (alter leader-ref (fn [_] nil)))))))
