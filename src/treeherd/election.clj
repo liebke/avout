@@ -1,10 +1,6 @@
 (ns treeherd.election
   (:require [treeherd.client :as tc]))
 
-(defn leader
-  ([candidates]
-     (first (first candidates))))
-
 (defn next-lowest
   ([id sorted-candidates]
      (loop [[next & remaining] sorted-candidates
@@ -13,18 +9,19 @@
          (first previous)
          (recur remaining next)))))
 
-(defn process-candidates
+(defn sort-candidates
   ([election-node id children]
      (let [path "/n-"
            path-size (count path)
            extract-id (fn [child-path] [(str election-node "/" child-path) (Integer. (subs child-path path-size))])
            candidates (sort-by second (map extract-id children))
-           node-to-watch (next-lowest id candidates)]
+           ;;node-to-watch (next-lowest id candidates)
+           ]
 ;;       (println "get-candidates id node-to-watch " id node-to-watch)
 ;;       (if node-to-watch (tc/exists client node-to-watch :watcher watcher))
        candidates)))
 
-(defn enter-election
+(defn start-election
   "Registers the client in an election, returning their ID.
 
   Examples:
@@ -58,39 +55,44 @@
     (delete-all treeherd \"/election\")
 
 
-    (create treeherd \"/election\" :persistent? true)
-    (repeatedly 5 #(create treeherd \"/election/n-\" :sequential? true))
-    (def election-results (enter-election treeherd \"/election\"))
-    (deref (:leader election-results))
-    (delete treeherd (deref (:leader election-results)))
+    (def candidate (create-candidate treeherd \"/election\"))
 
-    (deref (:leader election-results))
-    (delete treeherd (deref (:leader election-results)))
+    (repeatedly 5 #(create-candidate treeherd \"/election\"))
 
-    (deref (:leader election-results))
-    (delete treeherd (deref (:leader election-results)))
+    ;; (repeatedly 5 #(create treeherd \"/election/n-\" :sequential? true))
+
+    (def leader (start-election treeherd \"/election\" candidate))
+    @leader
+    (delete treeherd @leader)
+    @leader
+    (delete treeherd @leader)
+    @leader
+    (delete treeherd @leader)
 "
-  ([client election-node]
-     (when-not (tc/exists client election-node)
-       (tc/create client election-node :persistent? true))
+  ([client election-node local-candidate]
      (let [mutex (Object.)
-           path (str election-node "/n-")
-           name (tc/create client path :sequential? true)
-           id (Integer. (subs name (count path)))
            watcher (fn [event] (do (println "watched event: " event) (locking mutex (.notify mutex))))
-           id-ref (ref [name id])
+           leader (fn [candidates] (-> candidates first first))
            leader-ref (ref nil)]
        (future
          (locking mutex
            (loop [children (tc/children client election-node :watcher watcher)]
              (if (seq children)
                (do
-                 (dosync (alter leader-ref (fn [_] (leader (process-candidates election-node @id-ref children)))))
+                 (dosync (alter leader-ref (fn [_] (leader (sort-candidates election-node local-candidate children)))))
                  (.wait mutex)
                  (recur (tc/children client election-node :watcher watcher)))
                (dosync (alter leader-ref (fn [_] nil)))))))
-       {:id id-ref :leader leader-ref})))
+       leader-ref)))
 
+(defn create-candidate
+  ([client election-node]
+     (when-not (tc/exists client election-node)
+       (tc/create client election-node :persistent? true))
+     (let [path (str election-node "/n-")
+           name (tc/create client path :sequential? true)
+           id (Integer. (subs name (count path)))]
+       [name id])))
 
 (defn leave-election
   ([client id]
