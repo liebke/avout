@@ -68,9 +68,7 @@
   ([client barrier-node N f & {:keys [proc-name leave-on-completion?]
                                :or {proc-name (host-name)
                                     leave-on-completion? true}}]
-     (when-not (tc/exists client barrier-node)
-       (tc/create client barrier-node :persistent? true))
-     (tc/create client (str barrier-node "/" proc-name))
+     (tc/create-all client (str barrier-node "/" proc-name))
      (future
        (let [mutex (Object.)
              watcher (fn [event] (locking mutex (.notify mutex)))]
