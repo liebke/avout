@@ -13,12 +13,12 @@
          (first previous)
          (recur remaining next)))))
 
-(defn get-candidates
-  ([client election-node id watcher]
+(defn process-candidates
+  ([election-node id children]
      (let [path "/n-"
            path-size (count path)
            extract-id (fn [child-path] [(str election-node "/" child-path) (Integer. (subs child-path path-size))])
-           candidates (sort-by second (map extract-id (tc/children client election-node :watcher watcher)))
+           candidates (sort-by second (map extract-id children))
            node-to-watch (next-lowest id candidates)]
 ;;       (println "get-candidates id node-to-watch " id node-to-watch)
 ;;       (if node-to-watch (tc/exists client node-to-watch :watcher watcher))
@@ -63,14 +63,14 @@
            leader-ref (ref nil)]
        (future
          (locking client
-           (loop [candidates (get-candidates client election-node @id-ref watcher)]
+           (loop [candidates (process-candidates election-node @id-ref (tc/children client election-node :watcher watcher))]
              (println "candidates" candidates)
              (when (seq candidates)
                (do
                  (println (leader candidates))
                  (dosync (alter leader-ref (fn [_] (leader candidates))))
                  (.wait client)
-                 (recur (get-candidates client election-node @id-ref watcher)))))))
+                 (recur (process-candidates election-node @id-ref (tc/children client election-node :watcher watcher))))))))
        {:id id-ref :leader leader-ref})))
 
 
