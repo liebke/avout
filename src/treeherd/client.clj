@@ -319,17 +319,17 @@
          (seq (.getChildren client path (if watcher (make-watcher watcher) watch?)))
          (catch Exception _ false)))))
 
-(defn delete-children
-  "Deletes all of the node's children."
-  ([client path & options]
-     (doseq [child (or (children client path) nil)]
-       (apply delete-all client (str path "/" child) options))))
-
 (defn delete-all
   "Deletes a node and all of its children."
   ([client path & options]
      (apply delete-children client path options)
      (apply delete client path options)))
+
+(defn delete-children
+  "Deletes all of the node's children."
+  ([client path & options]
+     (doseq [child (or (children client path) nil)]
+       (apply delete-all client (str path "/" child) options))))
 
 (defn create-all
   "Create a node and all of its parents. The last node will be ephemeral,
