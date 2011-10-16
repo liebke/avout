@@ -322,7 +322,8 @@
 (defn delete-all
   "Deletes a node and all of its children."
   ([client path & options]
-     (apply delete-children client path options)
+     (doseq [child (or (children client path) nil)]
+       (apply delete-all client (str path "/" child) options))
      (apply delete client path options)))
 
 (defn delete-children
