@@ -1,4 +1,23 @@
 (ns treeherd.client
+  "
+  The core functions of ZooKeeper are name service,
+  configuration, and group membership, and this
+  functionality is provided by this library.
+  Additional functionality, including leader-election,
+  barriers, distributed-locks, priority-queues are
+  provided in the following treeherd name-spaces:
+
+  * treeherd.election
+  * treeherd.barrier
+  * treeherd.locks
+  * treeherd.queues
+
+  See examples:
+
+  * http://developer.yahoo.com/blogs/hadoop/posts/2009/05/using_zookeeper_to_tame_system/
+
+
+"
   (:import (org.apache.zookeeper ZooKeeper
                                  CreateMode
                                  Watcher
@@ -17,7 +36,8 @@
                                       Id
                                       ACL)
            (org.apache.commons.codec.digest DigestUtils)
-           (org.apache.commons.codec.binary Base64))
+           (org.apache.commons.codec.binary Base64)
+           (java.util.concurrent CountDownLatch))
   (:require [clojure.string :as s]))
 
 (def ^:dynamic *perms* {:write ZooDefs$Perms/WRITE
@@ -82,6 +102,7 @@
   (into #{} (map #(keyword (.name %)) (Watcher$Event$KeeperState/values))))
 
 ;; Watcher
+
 
 (defn make-watcher
   ([handler]
@@ -159,8 +180,15 @@
 (defn client
   "Returns a ZooKeeper client."
   ([connection-string & {:keys [timeout-msec watcher]
-                         :or {timeout-msec 1000}}]
-     (ZooKeeper. connection-string timeout-msec (when watcher (make-watcher watcher)))))
+                         :or {timeout-msec 5000}}]
+     (let [latch (CountDownLatch. 1)
+           session-watcher (make-watcher (fn [event]
+                                           (when (= (:keeper-state event) :SyncConnected)
+                                             (.countDown latch))
+                                           (when watcher (watcher event))))
+           zk (ZooKeeper. connection-string timeout-msec session-watcher)]
+       (.await latch)
+       zk)))
 
 (defn exists
   "
