@@ -139,8 +139,35 @@
 (defn enter-election
   "
 
-  Registers the client in an election, returning a map with the local-candidate node,
-  a ref pointing to the leader.
+  This is the primary user-level function in treeherd.election.
+  It registers the client in an election, returning a map with
+  the local-candidate node and a ref with the node name of
+  the leader. If the leader node either leaves the election or
+  fails, then a new leader will be elected and the leader-ref
+  will be updated.
+
+  As nodes enter the election, they are assigned a sequential
+  ID number. The lowest number is designated the leader.
+
+  Nodes are assigned the task of watching the node with the
+  next-lowest ID number. If the watched node fails or leaves
+  the election, the watcher will find the next next-lowest
+  node to watch; if there is no such node, the watcher is
+  designated leader and is responsible for updating the
+  leader-node -- which is watched, by default, by all the
+  nodes in the election.
+
+  When the leader-node is modified, a process on each
+  candidate node will be notified, and will update the
+  local leader-ref.
+
+  Options:
+
+    :leader-node -- the designated node where the current leader will be recorded
+    :election-node -- the designated node where the candidate nodes will be recorded
+    :leader-watcher -- a function that will be invoked with the name of the leader-node when a change in leader occurs
+    :election-watcher -- a function that will be invoked with the name of node, this node is responsible for watching
+    :monitor-leader? -- a flag indicating if the the leader node should be monitored and the leader-ref updated upon changes to the leader, defaults to true.
 
   Examples:
 
