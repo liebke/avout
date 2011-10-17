@@ -225,12 +225,12 @@
               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
               (throw e))))
          prom)
-       (stat-to-map (util/try*
-                     (.exists client path (if watcher (make-watcher watcher) watch?))
-                     (catch KeeperException e
-                       (do
-                         (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
-                         (throw e))))))))
+       (util/try*
+        (stat-to-map (.exists client path (if watcher (make-watcher watcher) watch?)))
+        (catch KeeperException e
+          (do
+            (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+            (throw e)))))))
 
 (defn create
   " Creates a node, returning either the node's name, or a promise with a result map if the done asynchronously. If an error occurs, create will return false.
@@ -386,6 +386,19 @@
           (do
             (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
             (throw e)))))))
+
+(defn sort-sequential-nodes
+  "Sorts a list of sequential child nodes."
+  ([unsorted-nodes]
+     (when (seq unsorted-nodes)
+       (let [zk-seq-length 10
+             extract-id (fn [child-path]
+                          [child-path
+                           (Integer. (subs child-path
+                                           (- (count child-path) zk-seq-length)
+                                           (count child-path)))])
+             nodes (map first (sort-by second (map extract-id unsorted-nodes)))]
+         nodes))))
 
 (defn delete-all
   "Deletes a node and all of its children."
