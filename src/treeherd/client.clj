@@ -15,7 +15,7 @@
   See examples:
 
   * http://developer.yahoo.com/blogs/hadoop/posts/2009/05/using_zookeeper_to_tame_system/
-
+  * http://archive.cloudera.com/cdh/3/zookeeper/zookeeperProgrammers.pdf
 
 "
   (:import (org.apache.zookeeper ZooKeeper
@@ -31,14 +31,17 @@
                                  AsyncCallback$DataCallback
                                  AsyncCallback$ACLCallback
                                  Watcher$Event$KeeperState
-                                 Watcher$Event$EventType)
+                                 Watcher$Event$EventType
+                                 KeeperException)
            (org.apache.zookeeper.data Stat
                                       Id
                                       ACL)
            (org.apache.commons.codec.digest DigestUtils)
            (org.apache.commons.codec.binary Base64)
            (java.util.concurrent CountDownLatch))
-  (:require [clojure.string :as s]))
+  (:require [clojure.string :as s]
+            [treeherd.util :as util]
+            [treeherd.logger :as log]))
 
 (def ^:dynamic *perms* {:write ZooDefs$Perms/WRITE
                         :read ZooDefs$Perms/READ
@@ -214,10 +217,20 @@
                         context path}}]
      (if (or async? callback)
        (let [prom (promise)]
-         (.exists client path (if watcher (make-watcher watcher) watch?)
-                  (stat-callback (promise-callback prom callback)) context)
+         (util/try*
+          (.exists client path (if watcher (make-watcher watcher) watch?)
+                   (stat-callback (promise-callback prom callback)) context)
+          (catch KeeperException e
+            (do
+              (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+              (throw e))))
          prom)
-       (stat-to-map (.exists client path (if watcher (make-watcher watcher) watch?))))))
+       (stat-to-map (util/try*
+                     (.exists client path (if watcher (make-watcher watcher) watch?))
+                     (catch KeeperException e
+                       (do
+                         (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+                         (throw e))))))))
 
 (defn create
   " Creates a node, returning either the node's name, or a promise with a result map if the done asynchronously. If an error occurs, create will return false.
@@ -260,17 +273,26 @@
                         async? false}}]
      (if (or async? callback)
        (let [prom (promise)]
-         (try
+         (util/try*
            (.create client path data acl
                     (create-modes {:persistent? persistent?, :sequential? sequential?})
                     (string-callback (promise-callback prom callback))
                     context)
-           (catch Exception e (do (println e) (deliver prom false))))
+           (catch KeeperException e
+             (do
+               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+               (throw e))))
          prom)
-       (try
+       (util/try*
          (.create client path data acl
                   (create-modes {:persistent? persistent?, :sequential? sequential?}))
-         (catch Exception e (do (println e) false))))))
+         (catch org.apache.zookeeper.KeeperException$NodeExistsException e
+           (log/debug (str "Tried to create an existing node: " path))
+           false)
+         (catch KeeperException e
+           (do
+             (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+             (throw e)))))))
 
 (defn delete
   "Deletes the given node, if it exists
@@ -296,15 +318,24 @@
                         context path}}]
      (if (or async? callback)
        (let [prom (promise)]
-         (try
+         (util/try*
            (.delete client path version (void-callback (promise-callback prom callback)) context)
-           (catch Exception _ (deliver prom false)))
+           (catch KeeperException e
+             (do
+               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+               (throw e))))
          prom)
-       (try
+       (util/try*
          (do
            (.delete client path version)
            true)
-         (catch Exception _ false)))))
+         (catch org.apache.zookeeper.KeeperException$NoNodeException e
+           (log/debug (str "Tried to delete a non-existent node: " path))
+           false)
+         (catch KeeperException e
+           (do
+             (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+             (throw e)))))))
 
 (defn children
   "
@@ -337,15 +368,24 @@
                         context path}}]
      (if (or async? callback)
        (let [prom (promise)]
-         (try
+         (util/try*
            (seq (.getChildren client path
                               (if watcher (make-watcher watcher) watch?)
                               (children-callback (promise-callback prom callback)) context))
-           (catch Exception _ (deliver prom false)))
+           (catch KeeperException e
+             (do
+               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+               (throw e))))
          prom)
-       (try
-         (seq (.getChildren client path (if watcher (make-watcher watcher) watch?)))
-         (catch Exception _ false)))))
+       (util/try*
+        (seq (.getChildren client path (if watcher (make-watcher watcher) watch?)))
+        (catch org.apache.zookeeper.KeeperException$NoNodeException e
+          (log/debug (str "Tried to list children of a non-existent node: " path))
+          false)
+        (catch KeeperException e
+          (do
+            (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+            (throw e)))))))
 
 (defn delete-all
   "Deletes a node and all of its children."
@@ -420,10 +460,20 @@
      (let [stat (Stat.)]
        (if (or async? callback)
         (let [prom (promise)]
-          (.getData client path (if watcher (make-watcher watcher) watch?)
-                    (data-callback (promise-callback prom callback)) context)
+          (util/try*
+           (.getData client path (if watcher (make-watcher watcher) watch?)
+                     (data-callback (promise-callback prom callback)) context)
+           (catch KeeperException e
+             (do
+               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+               (throw e))))
           prom)
-        {:data (.getData client path (if watcher (make-watcher watcher) watch?) stat)
+        {:data (util/try*
+                (.getData client path (if watcher (make-watcher watcher) watch?) stat)
+                (catch KeeperException e
+                  (do
+                    (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+                    (throw e))))
          :stat (stat-to-map stat)}))))
 
 (defn set-data
@@ -458,14 +508,20 @@
                                      context path}}]
      (if (or async? callback)
        (let [prom (promise)]
-         (try
+         (util/try*
            (.setData client path data version
                      (stat-callback (promise-callback prom callback)) context)
-           (catch Exception e (do (println e) (deliver prom false))))
+           (catch KeeperException e
+             (do
+               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+               (throw e))))
          prom)
-       (try
+       (util/try*
          (.setData client path data version)
-         (catch Exception e (do (println e) false))))))
+         (catch KeeperException e
+           (do
+             (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+             (throw e)))))))
 
 
 ;; ACL
@@ -507,17 +563,30 @@
      (let [stat (Stat.)]
        (if (or async? callback)
          (let [prom (promise)]
-           (try
+           (util/try*
              (.getACL client path stat (acl-callback (promise-callback prom callback)) context)
-             (catch Exception _ (deliver prom false)))
+             (catch KeeperException e
+               (do
+                 (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+                 (throw e))))
          prom)
-         {:acl (seq (.getACL client path stat))
+         {:acl (util/try*
+                (seq (.getACL client path stat))
+                (catch KeeperException e
+                  (do
+                    (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+                    (throw e))))
           :stat (stat-to-map stat)}))))
 
 (defn add-auth-info
   "Add auth info to connection."
   ([client scheme auth]
-     (.addAuthInfo client scheme (if (string? auth) (.getBytes auth) auth))))
+     (util/try*
+      (.addAuthInfo client scheme (if (string? auth) (.getBytes auth) auth))
+      (catch KeeperException e
+        (do
+          (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+          (throw e))))))
 
 (defn acl-id
   ([scheme id-value]
