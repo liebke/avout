@@ -25,13 +25,13 @@
               :or {lock-node "/lock"}}]
      (tc/delete-all client lock-node)))
 
-(defn all-request-nodes*
+(defn this-request-node*
   ([client lock-node request-id]
      (when-let [requests (tc/children client lock-node)]
        (filter #(re-find (re-pattern request-id) %) requests))))
 
-(defn this-request-node*
-  ([client lock-node request-id]
+(defn all-request-nodes*
+  ([client lock-node]
      (tc/children client lock-node)))
 
 (defn lock-holder-node*
