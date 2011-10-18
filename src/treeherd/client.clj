@@ -387,18 +387,24 @@
             (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
             (throw e)))))))
 
-(defn sort-sequential-nodes
+(defn extract-id
+  "Returns an integer id associated with a sequential node"
+  ([child-path]
+     (let [zk-seq-length 10]
+       (Integer. (subs child-path
+                       (- (count child-path) zk-seq-length)
+                       (count child-path))))))
+
+(defn index-sequential-nodes
   "Sorts a list of sequential child nodes."
   ([unsorted-nodes]
      (when (seq unsorted-nodes)
-       (let [zk-seq-length 10
-             extract-id (fn [child-path]
-                          [child-path
-                           (Integer. (subs child-path
-                                           (- (count child-path) zk-seq-length)
-                                           (count child-path)))])
-             nodes (map first (sort-by second (map extract-id unsorted-nodes)))]
-         nodes))))
+       (map extract-id unsorted-nodes))))
+
+(defn sort-sequential-nodes
+  "Sorts a list of sequential child nodes."
+  ([unsorted-nodes]
+     (map first (sort-by first (index-sequential-nodes unsorted-nodes)))))
 
 (defn delete-all
   "Deletes a node and all of its children."
