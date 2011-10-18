@@ -3,7 +3,7 @@
             [treeherd.logger :as log])
   (:import (java.util.concurrent.locks Lock)))
 
-(defn next-lowest
+(defn- next-lowest
   ([node sorted-nodes]
      (if (= node (first sorted-nodes)) ;; then the node is the lowest
        node
@@ -14,7 +14,7 @@
              previous
              (recur remaining current)))))))
 
-(defn make-lock-request-node
+(defn- make-lock-request-node
   ([client lock-node req-id]
      (let [path (str lock-node "/" req-id "-")
            request-node (tc/create-all client path :sequential? true)]
@@ -46,7 +46,7 @@
        (future
          (locking mutex
            (loop [request-queue (tc/sort-sequential-nodes (tc/children client lock-node))]
-             (if (seq request-queue) ;; if there are no request-queue, delete the lock
+             (if (seq request-queue) ;; if there are no requests in the queue, delete the lock
                ;; when the node-to-watch is nil, then the requester is no longer in the request queue, so exit
                (when-let [node-to-watch (next-lowest request-node request-queue)]
                  (tc/exists client (str lock-node "/" node-to-watch) :watcher watcher)
@@ -72,11 +72,8 @@
   (lock [this]
     (let [request-node (make-lock-request-node client lock-node request-id)]
       (locking this
-        (lock* client lock-node request-node
-               #(do
-                  (log/info (str "lock has been granted to " request-node))
-                  (locking this (.notify this))))
-      (.wait this))))
+        (lock* client lock-node request-node (locking this (.notify this)))
+        (.wait this))))
 
   (unlock [this]
     (unlock* client lock-node request-id))
