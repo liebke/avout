@@ -399,12 +399,12 @@
   "Sorts a list of sequential child nodes."
   ([unsorted-nodes]
      (when (seq unsorted-nodes)
-       (map extract-id unsorted-nodes))))
+       (map (fn [node] [(extract-id node) node]) unsorted-nodes))))
 
 (defn sort-sequential-nodes
   "Sorts a list of sequential child nodes."
   ([unsorted-nodes]
-     (map first (sort-by first (index-sequential-nodes unsorted-nodes)))))
+     (map second (sort-by first (index-sequential-nodes unsorted-nodes)))))
 
 (defn delete-all
   "Deletes a node and all of its children."
