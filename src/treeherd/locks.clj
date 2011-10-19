@@ -4,7 +4,7 @@
   (:import (java.util.concurrent.locks Lock
                                        ReentrantLock)))
 
-(defn- next-lowest
+(defn next-lowest
   ([node sorted-nodes]
      (if (= node (first sorted-nodes)) ;; then the node is the lowest
        node
@@ -15,11 +15,16 @@
              previous
              (recur remaining current)))))))
 
-(defn- make-lock-request-node
+(defn make-lock-request-node
   ([client lock-node req-id]
      (let [path (str lock-node "/" req-id "-")
            request-node (tc/create-all client path :sequential? true)]
        (subs request-node (inc (count lock-node))))))
+
+(defn delete-lock-request-node
+  ([client lock-node req-id]
+     (let [path (str lock-node "/" req-id "-")]
+       (tc/delete client path))))
 
 (defn delete-lock*
   ([client & {:keys [lock-node]
@@ -29,7 +34,7 @@
 (defn this-request-node*
   ([client lock-node request-id]
      (when-let [requests (tc/children client lock-node)]
-       (filter #(re-find (re-pattern request-id) %) requests))))
+       (first (filter #(re-find (re-pattern request-id) %) requests)))))
 
 (defn all-request-nodes*
   ([client lock-node]
@@ -40,7 +45,7 @@
      (when-let [requests (tc/children client lock-node)]
        (first (tc/sort-sequential-nodes requests)))))
 
-(defn lock*
+(defn request-lock
   ([client lock-node request-node lock-watcher]
      (let [mutex (Object.)
            watcher (fn [event] (locking mutex (.notify mutex)))]
@@ -66,12 +71,13 @@
   (this-request-node [this] "Returns the child node representing this lock request instance")
   (all-request-nodes [this] "Returns all queued request-nodes for this distributed lock")
   (lock-holder-node [this] "Returns the child node that holds the lock.")
-  (delete-lock [this] "Deletes the distributed lock."))
+  (delete-lock [this] "Deletes the distributed lock.")
+  (getHoldCount [this] "Gets the number of holds for this lock in the current thread")
+  (hasLock [this] "Indicates if the current thread has the lock"))
 
 (defrecord DistributedReentrantLock [client lock-node request-id local-lock]
   Lock
   (lock [this]
-    (println "trying to lock (request-id: " request-id ") with hold-count: " (.getHoldCount local-lock))
     (if (> (.getHoldCount local-lock) 0)
       (.lock local-lock)
       (let [request-node (make-lock-request-node client lock-node request-id)
@@ -81,7 +87,7 @@
                         (.lock local-lock)
                         (.signal condition)
                         (finally (.unlock local-lock))))]
-        (lock* client lock-node request-node watcher)
+        (request-lock client lock-node request-node watcher)
         (.lock local-lock)
         (.await condition))))
 
@@ -90,6 +96,19 @@
       (if (= (.getHoldCount local-lock) 1)
         (unlock* client lock-node request-id))
       (finally (.unlock local-lock))))
+
+  (tryLock [this]
+    (if (> (.getHoldCount local-lock) 0)
+      (.tryLock local-lock)
+      (if-let [locked? (.tryLock local-lock)]
+        (let [request-node (make-lock-request-node client lock-node request-id)]
+          (do (request-lock client lock-node request-node nil)
+              (.sync client lock-node nil nil)
+              (if (.hasLock this)
+                true
+                (do (delete-lock-request-node client lock-node request-id)
+                    false))))
+        false)))
 
   DistributedLock
   (this-request-node [this]
@@ -102,7 +121,14 @@
     (lock-holder-node* client lock-node))
 
   (delete-lock [this]
-    (delete-lock* client lock-node)))
+    (delete-lock* client lock-node))
+
+  (getHoldCount [this]
+    (.getHoldCount local-lock))
+
+  (hasLock [this]
+    (and (= (.this-request-node this) (.lock-holder-node this))
+         (.isHeldByCurrentThread local-lock))))
 
 (defn distributed-lock
   "
@@ -122,19 +148,19 @@
     (def dlock2 (distributed-lock treeherd))
     (future
       (.lock dlock2)
-      (println \"second lock acquired: \" (.getHoldCount (.local-lock dlock2)))
+      (println \"second lock acquired: \" (.getHoldCount dlock2))
       (Thread/sleep 5000)
       (println \"attempting to lock dlock2 again...\")
       (.lock dlock2)
-      (println \"second lock acquired again in same thread: \" (.getHoldCount (.local-lock dlock2)))
+      (println \"second lock acquired again in same thread: \" (.getHoldCount dlock2))
       (flush)
       (println \"sleeping...\") (flush)
       (Thread/sleep 5000)
       (println \"awake...\") (flush)
       (.unlock dlock2)
-      (println \"unlocked second lock: \" (.getHoldCount (.local-lock dlock2)))
+      (println \"unlocked second lock: \" (.getHoldCount dlock2))
       (.unlock dlock2)
-      (println \"unlocked second lock again: \" (.getHoldCount (.local-lock dlock2))))
+      (println \"unlocked second lock again: \" (.getHoldCount dlock2)))
     (.lock-holder-node dlock2)
     (delete treeherd (str \"/lock/\" (.lock-holder-node dlock2)))
 
