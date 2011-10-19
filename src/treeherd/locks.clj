@@ -68,12 +68,12 @@
   (lock-holder-node [this] "Returns the child node that holds the lock.")
   (delete-lock [this] "Deletes the distributed lock."))
 
-(defrecord DistributedReentrantLock [client lock-node request-id local-lock lock-counter]
+(defrecord DistributedReentrantLock [client lock-node request-id local-lock]
   Lock
   (lock [this]
-    (if (.get lock-counter)
-      (do
-        (.set lock-counter (inc (.get lock-counter))))
+    (println "trying to lock (request-id: " request-id ") with hold-count: " (.getHoldCount local-lock))
+    (if (> (.getHoldCount local-lock) 0)
+      (.lock local-lock)
       (let [request-node (make-lock-request-node client lock-node request-id)
             condition (.newCondition local-lock)
             watcher (fn []
@@ -81,20 +81,15 @@
                         (.lock local-lock)
                         (.signal condition)
                         (finally (.unlock local-lock))))]
-        (try
-          (lock* client lock-node request-node watcher)
-          (.lock local-lock)
-          (.set lock-counter 1)
-          (.await condition)
-          (finally (.unlock local-lock))))))
+        (lock* client lock-node request-node watcher)
+        (.lock local-lock)
+        (.await condition))))
 
   (unlock [this]
-    (if-let [counter (.get lock-counter)]
-      (do
-        (.set lock-counter (dec counter))
-        (if (= counter 1)
-          (unlock* client lock-node request-id)))
-      (throw (IllegalMonitorStateException. "Attempting to unlock without first obtaining that lock on this thread"))))
+    (try
+      (if (= (.getHoldCount local-lock) 1)
+        (unlock* client lock-node request-id))
+      (finally (.unlock local-lock))))
 
   DistributedLock
   (this-request-node [this]
@@ -127,14 +122,19 @@
     (def dlock2 (distributed-lock treeherd))
     (future
       (.lock dlock2)
-      (println \"second lock acquired: \" (.get (.lock-counter dlock2)))
+      (println \"second lock acquired: \" (.getHoldCount (.local-lock dlock2)))
+      (Thread/sleep 5000)
+      (println \"attempting to lock dlock2 again...\")
       (.lock dlock2)
-      (println \"second lock acquired again in same thread: \" (.get (.lock-counter dlock2)))
+      (println \"second lock acquired again in same thread: \" (.getHoldCount (.local-lock dlock2)))
       (flush)
+      (println \"sleeping...\") (flush)
+      (Thread/sleep 5000)
+      (println \"awake...\") (flush)
       (.unlock dlock2)
-      (println \"unlocked second lock: \" (.get (.lock-counter dlock2))))
+      (println \"unlocked second lock: \" (.getHoldCount (.local-lock dlock2)))
       (.unlock dlock2)
-      (println \"unlocked second lock again: \" (.get (.lock-counter dlock2)))
+      (println \"unlocked second lock again: \" (.getHoldCount (.local-lock dlock2))))
     (.lock-holder-node dlock2)
     (delete treeherd (str \"/lock/\" (.lock-holder-node dlock2)))
 
@@ -156,5 +156,5 @@
   ([client & {:keys [lock-node request-id]
               :or {lock-node "/lock"
                    request-id (.toString (java.util.UUID/randomUUID))}}]
-     (DistributedReentrantLock. client lock-node request-id (ReentrantLock. true) (ThreadLocal.))))
+     (DistributedReentrantLock. client lock-node request-id (ReentrantLock. true))))
 
