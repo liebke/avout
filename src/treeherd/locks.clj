@@ -3,7 +3,7 @@
             [treeherd.logger :as log])
   (:import (java.util.concurrent.locks Lock ReentrantLock Condition)
            (java.util.concurrent TimeUnit)
-           (java.util Date)))
+           (java.util Date UUID)))
 
 (defprotocol DistributedLock
   (requestNode [this] "Returns the child node representing this lock request instance")
@@ -40,13 +40,13 @@
 (defmacro when-lock-with-timeout
   ([lock duration time-units & body]
      `(try
-        (.tryLock ~lock ~time-units ~duration)
+        (.tryLock ~lock ~duration ~time-units)
         ~@body
         (finally (.unlock ~lock)))))
 
 (defmacro if-lock-with-timeout
   ([lock duration time-units then-exp else-exp]
-     `(if (.tryLock ~lock ~time-units ~duration)
+     `(if (.tryLock ~lock ~duration ~time-units)
         (try
           ~then-exp
           (finally (.unlock ~lock)))
@@ -123,7 +123,7 @@
       (.lock localLock) ;; if so, lock the local reentrant-lock again, but don't create a new distributed lock request
       (let [lock-granted (.newCondition localLock)
             watcher (fn [] (with-lock localLock (.signal lock-granted)))]
-        (.set requestId (.toString (java.util.UUID/randomUUID)))
+        (.set requestId (.toString (UUID/randomUUID)))
         (submit-lock-request client lockNode (.get requestId) watcher)
         (.lock localLock)
         (.await lock-granted))))
@@ -140,7 +140,7 @@
     (if (> (.getHoldCount localLock) 0) ;; checking for reentrancy
       (.tryLock localLock) ;; if so, lock the local reentrant-lock again, but don't create a new distributed lock request
       (if (.tryLock localLock)
-        (do (.set requestId (.toString (java.util.UUID/randomUUID)))
+        (do (.set requestId (.toString (UUID/randomUUID)))
             (submit-lock-request client lockNode (.get requestId) nil)
             (.sync client lockNode nil nil)
             (if (.hasLock this)
@@ -168,9 +168,12 @@
                                  (.tryLock localLock time-left (TimeUnit/NANOSECONDS))
                                  (.signal lock-event)
                                  (finally (.unlock localLock))))]
-            (.set requestId (.toString (java.util.UUID/randomUUID)))
+            (.set requestId (.toString (UUID/randomUUID)))
             (submit-lock-request client lockNode (.get requestId) watcher)
             (.awaitNanos lock-event time-left)
+            (when (Thread/interrupted)
+              (delete-lock-request-node client lockNode (.get requestId))
+              (throw (InterruptedException.)))
             (if (.hasLock this)
               true
               (do (delete-lock-request-node client lockNode (.get requestId))
