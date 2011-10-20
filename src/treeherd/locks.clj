@@ -175,12 +175,11 @@
         (log/debug \"dlock2 granted: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2))
         (Thread/sleep 5000)
         (log/debug \"attempting to lock dlock2 again...\")
-        (.lock dlock2)
-        (log/debug \"dlock2 granted again: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2))
-        (log/debug \"sleeping...\")
-        (Thread/sleep 5000)
-        (log/debug \"awake...\")
-        (.unlock dlock2)
+        (with-lock dlock2
+          (log/debug \"dlock2 granted again: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2))
+          (log/debug \"sleeping...\")
+          (Thread/sleep 5000)
+          (log/debug \"awake...\"))
         (log/debug \"dlock2 unlocked: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2)))
       (log/debug \"dlock2 unlocked again: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2)))
 
