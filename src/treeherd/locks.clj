@@ -1,5 +1,5 @@
 (ns treeherd.locks
-  (:require [treeherd.client :as zk]
+  (:require [treeherd.zookeeper :as zk]
             [treeherd.logger :as log])
   (:import (java.util.concurrent.locks Lock ReentrantLock)))
 
@@ -149,27 +149,27 @@
     (.getHoldCount localLock)))
 
 (defn distributed-lock
-  "
+  "Initializer for ZKDistributedReentrantLock
 
   Examples:
 
-    (use '(treeherd client locks))
+    (use '(treeherd zookeeper locks))
     (require '[treeherd.logger :as log])
 
-    (def treeherd (client \"127.0.0.1\"))
+    (def client (connect \"127.0.0.1\"))
 
-    (delete-lock treeherd \"/lock\")
+    (delete-lock client \"/lock\")
 
-    (def dlock (distributed-lock treeherd))
+    (def dlock (distributed-lock client))
     (future (with-lock dlock
               (log/debug \"dlock granted: count = \" (.getHoldCount dlock) \", owner = \" (.getOwner dlock))
               (Thread/sleep 5000))
            (log/debug \"dlock released: count = \" (.getHoldCount dlock) \", owner = \" (.getOwner dlock)))
 
     (.getOwner dlock)
-    (delete treeherd (str \"/lock/\" (.getOwner dlock)))
+    (delete client (str \"/lock/\" (.getOwner dlock)))
 
-    (def dlock2 (distributed-lock treeherd))
+    (def dlock2 (distributed-lock client))
     (future
       (with-lock dlock2
         (log/debug \"dlock2 granted: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2))
@@ -184,7 +184,7 @@
       (log/debug \"dlock2 unlocked again: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2)))
 
     (.getOwner dlock2)
-    (delete treeherd (str \"/lock/\" (.getOwner dlock2)))
+    (delete client (str \"/lock/\" (.getOwner dlock2)))
 
 
     (future (.lock dlock) (log/debug \"first lock acquired acquired again\"))
@@ -195,7 +195,7 @@
 
    ;; from another repl
    ;; connect to dlock lock
-   (def dlock-reconnected (distributed-lock treeherd :request-id (.getOwner dlock)))
+   (def dlock-reconnected (distributed-lock client :request-id (.getOwner dlock)))
    (.unlock dlock-reconnected)
 
    (.delete dlock)
@@ -203,5 +203,8 @@
 "
   ([client & {:keys [lock-node request-id]
               :or {lock-node "/lock"}}]
-     (ZKDistributedReentrantLock. client lock-node (doto (ThreadLocal.) (.set request-id)) (ReentrantLock. true))))
+     (ZKDistributedReentrantLock. client lock-node
+                                  (doto (ThreadLocal.)
+                                    (.set request-id))
+                                  (ReentrantLock. true))))
 

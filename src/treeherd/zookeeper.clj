@@ -1,4 +1,4 @@
-(ns treeherd.client
+(ns treeherd.zookeeper
   "
   The core functions of ZooKeeper are name service,
   configuration, and group membership, and this
@@ -53,7 +53,7 @@
   "
   Examples:
 
-    (use 'treeherd.client)
+    (use 'treeherd.zookeeper)
     (perm-or *perms* :read :write :create)
 "
   ([perms & perm-keys]
@@ -180,7 +180,7 @@
 
 ;; Public DSL
 
-(defn client
+(defn connect
   "Returns a ZooKeeper client."
   ([connection-string & {:keys [timeout-msec watcher]
                          :or {timeout-msec 5000}}]
@@ -197,18 +197,18 @@
   "
   Examples:
 
-    (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" :wacher #(println \"event received: \" %)))
+    (use 'treeherd.zookeeper)
+    (def client (connect \"127.0.0.1:2181\" :wacher #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
 
-    (exists treeherd \"/yadda\" :watch? true)
-    (create treeherd \"/yadda\")
-    (exists treeherd \"/yadda\")
-    (def p0 (exists treeherd \"/yadda\" :async? true))
+    (exists client \"/yadda\" :watch? true)
+    (create client \"/yadda\")
+    (exists client \"/yadda\")
+    (def p0 (exists client \"/yadda\" :async? true))
     @p0
-    (def p1 (exists treeherd \"/yadda\" :callback callback))
+    (def p1 (exists client \"/yadda\" :callback callback))
     @p1
 "
   ([client path & {:keys [watcher watch? async? callback context]
@@ -247,22 +247,22 @@
 
   Example:
 
-    (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
+    (use 'treeherd.zookeeper)
+    (def client (connect \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
 
     ;; first delete the baz node if it exists
-    (delete-all treeherd \"/baz\")
+    (delete-all client \"/baz\")
     ;; now create a persistent parent node, /baz, and two child nodes
-    (def p0 (create treeherd \"/baz\" :callback callback :persistent? true))
+    (def p0 (create client \"/baz\" :callback callback :persistent? true))
     @p0
-    (def p1 (create treeherd \"/baz/1\" :callback callback))
+    (def p1 (create client \"/baz/1\" :callback callback))
     @p1
-    (def p2 (create treeherd \"/baz/2-\" :async? true :sequential? true))
+    (def p2 (create client \"/baz/2-\" :async? true :sequential? true))
     @p2
-    (create treeherd \"/baz/3\")
+    (create client \"/baz/3\")
 
 "
   ([client path & {:keys [data acl persistent? sequential? context callback async?]
@@ -299,17 +299,17 @@
 
   Examples:
 
-    (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" :watch #(println \"event received: \" %)))
+    (use 'treeherd.zookeeper)
+    (def client (connect \"127.0.0.1:2181\" :watch #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
 
-    (create treeherd \"/foo\" :persistent? true)
-    (create treeherd \"/bar\" :persistent? true)
+    (create client \"/foo\" :persistent? true)
+    (create client \"/bar\" :persistent? true)
 
-    (delete treeherd \"/foo\")
-    (def p0 (delete treeherd \"/bar\" :callback callback))
+    (delete client \"/foo\")
+    (def p0 (delete client \"/bar\" :callback callback))
     @p0
 "
   ([client path & {:keys [version async? callback context]
@@ -341,24 +341,24 @@
   "
   Examples:
 
-    (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
+    (use 'treeherd.zookeeper)
+    (def client (connect \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
 
-    (delete-all treeherd \"/foo\")
-    (create treeherd \"/foo\" :persistent? true)
-    (repeatedly 5 #(create treeherd \"/foo/child-\" :sequential? true))
+    (delete-all client \"/foo\")
+    (create client \"/foo\" :persistent? true)
+    (repeatedly 5 #(create client \"/foo/child-\" :sequential? true))
 
-    (children treeherd \"/foo\")
-    (def p0 (children treeherd \"/foo\" :async? true))
+    (children client \"/foo\")
+    (def p0 (children client \"/foo\" :async? true))
     @p0
-    (def p1 (children treeherd \"/foo\" :callback callback))
+    (def p1 (children client \"/foo\" :callback callback))
     @p1
-    (def p2 (children treeherd \"/foo\" :async? true :watch? true))
+    (def p2 (children client \"/foo\" :async? true :watch? true))
     @p2
-    (def p3 (children treeherd \"/foo\" :async? true :watcher #(println \"watched event: \" %)))
+    (def p3 (children client \"/foo\" :async? true :watcher #(println \"watched event: \" %)))
     @p3
 
 "
@@ -425,9 +425,9 @@
    :acl, will only be applied to the last child node.
 
   Examples:
-  (delete-all treeherd \"/foo\")
-  (create-all treeherd \"/foo/bar/baz\" :persistent? true)
-  (create-all treeherd \"/foo/bar/baz/n-\" :sequential? true)
+  (delete-all client \"/foo\")
+  (create-all client \"/foo/bar/baz\" :persistent? true)
+  (create-all client \"/foo/bar/baz/n-\" :sequential? true)
 
 
 "
@@ -448,28 +448,28 @@
 
   Examples:
 
-    (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
+    (use 'treeherd.zookeeper)
+    (def client (connect \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
 
-    (delete-all treeherd \"/foo\")
-    (create treeherd \"/foo\" :persistent? true :data (.getBytes \"Hello World\"))
-    (def result (data treeherd \"/foo\"))
+    (delete-all client \"/foo\")
+    (create client \"/foo\" :persistent? true :data (.getBytes \"Hello World\"))
+    (def result (data client \"/foo\"))
     (String. (:data result))
     (:stat result)
 
-    (def p0 (data treeherd \"/foo\" :async? true))
+    (def p0 (data client \"/foo\" :async? true))
     @p0
     (String. (:data @p0))
 
-    (def p1 (data treeherd \"/foo\" :watch? true :callback callback))
+    (def p1 (data client \"/foo\" :watch? true :callback callback))
     @p1
     (String. (:data @p1))
 
-    (create treeherd \"/foobar\" :persistent? true :data (.getBytes (pr-str {:a 1, :b 2, :c 3})))
-    (read-string (String. (:data (data treeherd \"/foobar\"))))
+    (create client \"/foobar\" :persistent? true :data (.getBytes (pr-str {:a 1, :b 2, :c 3})))
+    (read-string (String. (:data (data client \"/foobar\"))))
 
 "
   ([client path & {:keys [watcher watch? async? callback context]
@@ -500,26 +500,26 @@
 
   Examples:
 
-    (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
+    (use 'treeherd.zookeeper)
+    (def client (connect \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
 
     (defn callback [result]
       (println \"got callback result: \" result))
 
-    (delete-all treeherd \"/foo\")
-    (create treeherd \"/foo\" :persistent? true)
+    (delete-all client \"/foo\")
+    (create client \"/foo\" :persistent? true)
 
-    (set-data treeherd \"/foo\" (.getBytes \"Hello World\") 0)
-    (String. (:data (data treeherd \"/foo\")))
+    (set-data client \"/foo\" (.getBytes \"Hello World\") 0)
+    (String. (:data (data client \"/foo\")))
 
 
-    (def p0 (set-data treeherd \"/foo\" (.getBytes \"New Data\") 0 :async? true))
+    (def p0 (set-data client \"/foo\" (.getBytes \"New Data\") 0 :async? true))
     @p0
-    (String. (:data (data treeherd \"/foo\")))
+    (String. (:data (data client \"/foo\")))
 
-    (def p1 (set-data treeherd \"/foo\" (.getBytes \"Even Newer Data\") 1 :callback callback))
+    (def p1 (set-data client \"/foo\" (.getBytes \"Even Newer Data\") 1 :callback callback))
     @p1
-    (String. (:data (data treeherd \"/foo\")))
+    (String. (:data (data client \"/foo\")))
 
 "
   ([client path data version & {:keys [async? callback context]
@@ -560,20 +560,20 @@
  "
   Examples:
 
-    (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
-    (add-auth-info treeherd \"digest\" \"david:secret\")
+    (use 'treeherd.zookeeper)
+    (def client (connect \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
+    (add-auth-info client \"digest\" \"david:secret\")
 
     (defn callback [result]
       (println \"got callback result: \" result))
 
-    (delete-all treeherd \"/foo\")
-    (create treeherd \"/foo\" :acl [(acl \"auth\" \"\" :read :write :create :delete)])
-    (get-acl treeherd \"/foo\")
+    (delete-all client \"/foo\")
+    (create client \"/foo\" :acl [(acl \"auth\" \"\" :read :write :create :delete)])
+    (get-acl client \"/foo\")
 
-    (def p0 (get-acl treeherd \"/foo\" :async? true))
+    (def p0 (get-acl client \"/foo\" :async? true))
 
-    (def p1 (get-acl treeherd \"/foo\" :callback callback))
+    (def p1 (get-acl client \"/foo\" :callback callback))
 
 "
   ([client path & {:keys [async? callback context]
@@ -615,31 +615,31 @@
   "
   Examples:
 
-    (use 'treeherd.client)
-    (def treeherd (client \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
+    (use 'treeherd.zookeeper)
+    (def client (connect \"127.0.0.1:2181\" :watcher #(println \"event received: \" %)))
 
     (def open-acl-unsafe (acl \"world\" \"anyone\" :read :create :delete :admin :write))
-    (create treeherd \"/mynode\" :acl [open-acl-unsafe])
+    (create client \"/mynode\" :acl [open-acl-unsafe])
 
     (def ip-acl (acl \"ip\" \"127.0.0.1\" :read :create :delete :admin :write))
-    (create treeherd \"/mynode2\" :acl [ip-acl])
+    (create client \"/mynode2\" :acl [ip-acl])
 
-    (add-auth-info treeherd \"digest\" \"david:secret\")
+    (add-auth-info client \"digest\" \"david:secret\")
 
     ;; works
     ;; same as (acls :creator-all-acl)
     (def auth-acl (acl \"auth\" \"\" :read :create :delete :admin :write))
-    (create treeherd \"/mynode4\" :acl [auth-acl])
-    (data treeherd \"/mynode4\")
+    (create client \"/mynode4\" :acl [auth-acl])
+    (data client \"/mynode4\")
 
     ;; change auth-info
-    (add-auth-info treeherd \"digest\" \"edgar:secret\")
-    (data treeherd \"/mynode4\")
+    (add-auth-info client \"digest\" \"edgar:secret\")
+    (data client \"/mynode4\")
 
     ;; doesn't works
     (def digest-acl (acl  \"digest\" (str \"david:\" (hash-password \"secret\")) :read :create :delete :admin :write))
-    (create treeherd \"/mynode3\" :acl [digest-acl])
-    (data treeherd \"/mynode3\")
+    (create client \"/mynode3\" :acl [digest-acl])
+    (data client \"/mynode3\")
 
 "
   ([scheme id-value perm & more-perms]
