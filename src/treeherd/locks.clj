@@ -2,6 +2,7 @@
   (:require [treeherd.zookeeper :as zk]
             [treeherd.logger :as log])
   (:import (java.util.concurrent.locks Lock ReentrantLock Condition)
+           (java.util.concurrent TimeUnit)
            (java.util Date)))
 
 (defprotocol DistributedLock
@@ -37,12 +38,19 @@
         ~else-exp)))
 
 (defmacro when-lock-with-timeout
-  ([lock timeunits duration & body]
+  ([lock duration time-units & body]
      `(try
-        (.tryLock ~lock ~timeunits ~duration)
+        (.tryLock ~lock ~time-units ~duration)
         ~@body
         (finally (.unlock ~lock)))))
 
+(defmacro if-lock-with-timeout
+  ([lock duration time-units then-exp else-exp]
+     `(if (.tryLock ~lock ~time-units ~duration)
+        (try
+          ~then-exp
+          (finally (.unlock ~lock)))
+        ~else-exp)))
 
 ;; internal functions
 
@@ -147,8 +155,27 @@
   ;; TODO
   (newCondition [this] nil)
 
-  ;; TODO
-  (tryLock [this time unit])
+  (tryLock [this time unit]
+    (when (Thread/interrupted)
+      (throw (InterruptedException.)))
+    (if (> (.getHoldCount localLock) 0) ;; checking for reentrancy
+      (.tryLock localLock time unit) ;; lock the local reentrant-lock again, but don't create a new distributed lock request
+      (let [lock-event (.newCondition localLock)
+            start-time (System/nanoTime)]
+        (if (.tryLock localLock time unit)
+          (let [time-left (- (.toNanos unit time) (- (System/nanoTime) start-time))
+                watcher (fn [] (try
+                                 (.tryLock localLock time-left (TimeUnit/NANOSECONDS))
+                                 (.signal lock-event)
+                                 (finally (.unlock localLock))))]
+            (.set requestId (.toString (java.util.UUID/randomUUID)))
+            (submit-lock-request client lockNode (.get requestId) watcher)
+            (.awaitNanos lock-event time-left)
+            (if (.hasLock this)
+              true
+              (do (delete-lock-request-node client lockNode (.get requestId))
+                  false)))
+          false))))
 
 
   DistributedLock
