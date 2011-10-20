@@ -59,7 +59,7 @@
      (when-let [requests (zk/children client lock-node)]
        (first (filter #(re-find (re-pattern request-id) %) requests)))))
 
-(defn delete-lock-request
+(defn delete-lock-request-node
   ([client lock-node request-id]
      (zk/delete client (str lock-node "/" (find-lock-request-node client lock-node request-id)))))
 
@@ -84,7 +84,7 @@
        (future
          (locking mutex
            (loop [lock-request-queue (zk/sort-sequential-nodes (zk/children client lock-node))]
-             (if (seq lock-request-queue) ;; if no requests in the queue, delete the lock
+             (when (seq lock-request-queue) ;; if no requests in the queue, exit
                ;; when the node-to-watch is nil, the requester is no longer in the queue, so exit
                (if-let [node-to-watch (find-next-lowest-node lock-request-node lock-request-queue)]
                  (if (zk/exists client (str lock-node "/" node-to-watch) :watcher watcher)
@@ -93,8 +93,7 @@
                        (.wait mutex) ;; wait until zookeeper invokes the watcher, which calls notify
                        (recur (zk/sort-sequential-nodes (zk/children client lock-node))))
                    ;; if the node-to-watch no longer exists recur to find the next node-to-watch
-                   (recur (zk/sort-sequential-nodes (zk/children client lock-node))))
-                 (delete-lock client lock-node))))))
+                   (recur (zk/sort-sequential-nodes (zk/children client lock-node)))))))))
        lock-request-node)))
 
 (deftype ZKDistributedReentrantLock [client lockNode requestId localLock]
@@ -103,36 +102,34 @@
     (if (> (.getHoldCount localLock) 0)
       (.lock localLock)
       (let [lock-granted (.newCondition localLock)
-            watcher (fn []
-                      (try
-                        (.lock localLock)
-                        (.signal lock-granted)
-                        (finally (.unlock localLock))))]
-        (submit-lock-request client lockNode requestId watcher)
+            watcher (fn [] (with-lock localLock (.signal lock-granted)))]
+        (.set requestId (.toString (java.util.UUID/randomUUID)))
+        (submit-lock-request client lockNode (.get requestId) watcher)
         (.lock localLock)
         (.await lock-granted))))
 
   (unlock [this]
     (try
       (if (= (.getHoldCount localLock) 1)
-        (delete-lock-request client lockNode requestId))
+        (delete-lock-request-node client lockNode (.get requestId)))
       (finally (.unlock localLock))))
 
   (tryLock [this]
     (if (> (.getHoldCount localLock) 0)
       (.tryLock localLock)
       (if (.tryLock localLock)
-        (do (submit-lock-request client lockNode requestId nil)
+        (do (.set requestId (.toString (java.util.UUID/randomUUID)))
+            (submit-lock-request client lockNode (.get requestId) nil)
             (.sync client lockNode nil nil)
             (if (.hasLock this)
               true
-              (do (delete-lock-request-node client lockNode requestId)
+              (do (delete-lock-request-node client lockNode (.get requestId))
                   false)))
         false)))
 
   DistributedLock
   (requestNode [this]
-    (find-lock-request-node client lockNode requestId))
+    (find-lock-request-node client lockNode (.get requestId)))
 
   (queuedRequests [this]
     (queued-requests client lockNode))
@@ -157,36 +154,41 @@
   Examples:
 
     (use '(treeherd client locks))
+    (require '[treeherd.logger :as log])
+
     (def treeherd (client \"127.0.0.1\"))
 
     (delete-lock treeherd \"/lock\")
 
     (def dlock (distributed-lock treeherd))
-    (future (.lock dlock) (println \"first lock acquired\") (flush) (Thread/sleep 5000))
+    (future (with-lock dlock
+              (log/debug \"dlock granted: count = \" (.getHoldCount dlock) \", owner = \" (.getOwner dlock))
+              (Thread/sleep 5000))
+           (log/debug \"dlock released: count = \" (.getHoldCount dlock) \", owner = \" (.getOwner dlock)))
+
     (.getOwner dlock)
     (delete treeherd (str \"/lock/\" (.getOwner dlock)))
 
     (def dlock2 (distributed-lock treeherd))
     (future
-      (.lock dlock2)
-      (println \"second lock acquired: \" (.getHoldCount dlock2))
-      (Thread/sleep 5000)
-      (println \"attempting to lock dlock2 again...\")
-      (.lock dlock2)
-      (println \"second lock acquired again in same thread: \" (.getHoldCount dlock2))
-      (flush)
-      (println \"sleeping...\") (flush)
-      (Thread/sleep 5000)
-      (println \"awake...\") (flush)
-      (.unlock dlock2)
-      (println \"unlocked second lock: \" (.getHoldCount dlock2))
-      (.unlock dlock2)
-      (println \"unlocked second lock again: \" (.getHoldCount dlock2)))
+      (with-lock dlock2
+        (log/debug \"dlock2 granted: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2))
+        (Thread/sleep 5000)
+        (log/debug \"attempting to lock dlock2 again...\")
+        (.lock dlock2)
+        (log/debug \"dlock2 granted again: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2))
+        (log/debug \"sleeping...\")
+        (Thread/sleep 5000)
+        (log/debug \"awake...\")
+        (.unlock dlock2)
+        (log/debug \"dlock2 unlocked: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2)))
+      (log/debug \"dlock2 unlocked again: count = \" (.getHoldCount dlock2) \", owner = \" (.getOwner dlock2)))
+
     (.getOwner dlock2)
     (delete treeherd (str \"/lock/\" (.getOwner dlock2)))
 
 
-    (future (.lock dlock) (println \"first lock acquired acquired again\") (flush))
+    (future (.lock dlock) (log/debug \"first lock acquired acquired again\"))
     (.getOwner dlock)
     (.unlock dlock)
 
@@ -201,7 +203,6 @@
 
 "
   ([client & {:keys [lock-node request-id]
-              :or {lock-node "/lock"
-                   request-id (.toString (java.util.UUID/randomUUID))}}]
-     (ZKDistributedReentrantLock. client lock-node request-id (ReentrantLock. true))))
+              :or {lock-node "/lock"}}]
+     (ZKDistributedReentrantLock. client lock-node (doto (ThreadLocal.) (.set request-id)) (ReentrantLock. true))))
 
