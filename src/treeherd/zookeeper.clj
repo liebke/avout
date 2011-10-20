@@ -19,6 +19,7 @@
 
 "
   (:import (org.apache.zookeeper ZooKeeper
+                                 ZooKeeper$States
                                  CreateMode
                                  Watcher
                                  ZooDefs$Ids
@@ -98,11 +99,17 @@
         :keeper-state (keyword (.name (.getState event)))
         :path (.getPath event)})))
 
-(def event-types
-  (into #{} (map #(keyword (.name %)) (Watcher$Event$EventType/values))))
+(defn event-types
+  ":NodeDeleted :NodeDataChanged :NodeCreated :NodeChildrenChanged :None"
+  ([] (into #{} (map #(keyword (.name %)) (Watcher$Event$EventType/values)))))
 
-(def keeper-states
-  (into #{} (map #(keyword (.name %)) (Watcher$Event$KeeperState/values))))
+(defn keeper-states
+  ":AuthFailed :Unknown :SyncConnected :Disconnected :Expired :NoSyncConnected"
+  ([] (into #{} (map #(keyword (.name %)) (Watcher$Event$KeeperState/values)))))
+
+(defn client-states
+  ":AUTH_FAILED :CLOSED :CONNECTED :ASSOCIATING :CONNECTING"
+  ([] (into #{} (map #(keyword (.toString %)) (ZooKeeper$States/values)))))
 
 ;; Watcher
 
@@ -192,6 +199,11 @@
            zk (ZooKeeper. connection-string timeout-msec session-watcher)]
        (.await latch)
        zk)))
+
+(defn state
+  "Returns current state of client, including :CONNECTING, :ASSOCIATING, :CONNECTED, :CLOSED, or :AUTH_FAILED"
+  ([client]
+     (keyword (.toString (.getState client)))))
 
 (defn exists
   "
