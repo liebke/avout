@@ -21,14 +21,22 @@
         ~@body
         (finally (.unlock ~lock)))))
 
-(defmacro try-lock
+(defmacro when-lock
   ([lock & body]
-     `(try
-        (.tryLock ~lock)
-        ~@body
-        (finally (.unlock ~lock)))))
+     `(when (.tryLock ~lock)
+        (try
+          ~@body
+          (finally (.unlock ~lock))))))
 
-(defmacro try-lock-with-timeout
+(defmacro if-lock
+  ([lock then-exp else-exp]
+     `(if (.tryLock ~lock)
+        (try
+          ~then-exp
+          (finally (.unlock ~lock)))
+        ~else-exp)))
+
+(defmacro when-lock-with-timeout
   ([lock timeunits duration & body]
      `(try
         (.tryLock ~lock ~timeunits ~duration)
