@@ -2,7 +2,7 @@
 
 A Clojure DSL for Apache ZooKeeper and library of distributed concurrency primitives.
 
-Currently, there is a distributed implementation of java.util.concurrent.locks.Lock modeled after ReentrantLock. The next distributed lock to implement will be DistributedReentrantReadWriteLock, which will be used to build distributed implementations of Clojure's concurrency primitives, Refs, Atoms, and Pods.
+Currently, there is a distributed implementation of java.util.concurrent.locks.Lock modeled after ReentrantLock. DistributedReentrantReadWriteLock will be the next distributed lock to implement. It will then be used to build distributed implementations of Clojure's concurrency primitives, Refs, Atoms, and Pods.
 
 
 ## treeherd.zookeeper
@@ -41,7 +41,7 @@ You can use the with-lock macro, which is equivalent to Clojure's locking macro,
     (with-lock lock
       ... do something)
       
-The tryLock method doesn't block while waiting for a lock, as the try method does, but instead returns boolean indicating success in obtaining the lock.
+The tryLock method doesn't block while waiting for a lock, instead it returns a boolean indicating whether the lock was obtained.
 
     (try (.tryLock lock)
       ... do something
