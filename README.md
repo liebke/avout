@@ -1,10 +1,14 @@
 # Treeherd
 
-A Clojure distributed lock library and DSL for Apache ZooKeeper.
+A Clojure DSL for Apache ZooKeeper and library of distributed concurrency primitives.
+
+Currently, there is a distributed implementation of java.util.concurrent.locks.Lock modeled after ReentrantLock. The next distributed lock to implement will be DistributedReentrantReadWriteLock, which will be used to build distributed implementations of Clojure's concurrency primitives, Refs, Atoms, and Pods.
+
 
 ## treeherd.zookeeper
 
-The treeherd.zookeeper namespace contains functions for working with ZooKeeper. 
+The treeherd.zookeeper namespace contains the ZooKeeper DSL.
+
 
 ## treeherd.locks
 
@@ -12,10 +16,15 @@ The treeherd.locks namespace contains an implementation of java.util.concurrent.
 
 ### Examples
 
-First get a ZooKeeper client.
 
-    (use '(treeherd client locks))
-    (def client (connect "127.0.0.1"))
+First require treeherd.zookeeper and treeherd.locks.
+
+    (require '(treeherd.zookeeper :as zk))
+    (use 'treeherd.locks)
+    
+Then get a ZooKeeper client.    
+
+    (def client (zk/connect "127.0.0.1"))
     
 Then create a ZKDistributedReentrantLock with the distributed-lock function.
 
@@ -63,7 +72,14 @@ The macros when-lock-with-timeout and if-lock-with-timeout are also available.
       (... didn't get lock do something else))
 
 
-Conditions Coming Soon ...
+
+# Roadmap
+
+1. DistributedCondition
+2. DistributedReentrantReadWriteLock
+3. DistributedRef, an implementation of Clojure's IRef
+4. DisributedAtom
+5. DistributedPod
 
 ## License
 
