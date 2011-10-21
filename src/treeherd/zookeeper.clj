@@ -200,6 +200,10 @@
        (.await latch)
        zk)))
 
+(defn register-watcher
+  ([client watcher]
+     (.register client (make-watcher watcher))))
+
 (defn state
   "Returns current state of client, including :CONNECTING, :ASSOCIATING, :CONNECTED, :CLOSED, or :AUTH_FAILED"
   ([client]
@@ -234,14 +238,14 @@
                    (stat-callback (promise-callback prom callback)) context)
           (catch KeeperException e
             (do
-              (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+              (log/debug (str "exists: KeeperException Thrown: code: " (.code e) ", exception: " e))
               (throw e))))
          prom)
        (util/try*
         (stat-to-map (.exists client path (if watcher (make-watcher watcher) watch?)))
         (catch KeeperException e
           (do
-            (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+            (log/debug (str "exists: KeeperException Thrown: code: " (.code e) ", exception: " e))
             (throw e)))))))
 
 (defn create
@@ -292,7 +296,7 @@
                     context)
            (catch KeeperException e
              (do
-               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+               (log/debug (str "create: KeeperException Thrown: code: " (.code e) ", exception: " e))
                (throw e))))
          prom)
        (util/try*
@@ -303,7 +307,7 @@
            false)
          (catch KeeperException e
            (do
-             (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+             (log/debug (str "create: KeeperException Thrown: code: " (.code e) ", exception: " e))
              (throw e)))))))
 
 (defn delete
@@ -334,7 +338,7 @@
            (.delete client path version (void-callback (promise-callback prom callback)) context)
            (catch KeeperException e
              (do
-               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+               (log/debug (str "delete: KeeperException Thrown: code: " (.code e) ", exception: " e))
                (throw e))))
          prom)
        (util/try*
@@ -346,7 +350,7 @@
            false)
          (catch KeeperException e
            (do
-             (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+             (log/debug (str "delete: KeeperException Thrown: code: " (.code e) ", exception: " e))
              (throw e)))))))
 
 (defn children
@@ -386,7 +390,7 @@
                               (children-callback (promise-callback prom callback)) context))
            (catch KeeperException e
              (do
-               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+               (log/debug (str "children: KeeperException Thrown: code: " (.code e) ", exception: " e  ":= " (.printStackTrace e)))
                (throw e))))
          prom)
        (util/try*
@@ -396,7 +400,7 @@
           false)
         (catch KeeperException e
           (do
-            (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+            (log/debug (str "children: KeeperException Thrown: code: " (.code e) ", exception: " e  ":= " (.printStackTrace e)))
             (throw e)))))))
 
 (defn extract-id
@@ -496,14 +500,14 @@
                      (data-callback (promise-callback prom callback)) context)
            (catch KeeperException e
              (do
-               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+               (log/debug (str "data: KeeperException Thrown: code: " (.code e) ", exception: " e))
                (throw e))))
           prom)
         {:data (util/try*
                 (.getData client path (if watcher (make-watcher watcher) watch?) stat)
                 (catch KeeperException e
                   (do
-                    (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+                    (log/debug (str "data: KeeperException Thrown: code: " (.code e) ", exception: " e))
                     (throw e))))
          :stat (stat-to-map stat)}))))
 
@@ -544,14 +548,14 @@
                      (stat-callback (promise-callback prom callback)) context)
            (catch KeeperException e
              (do
-               (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+               (log/debug (str "set-data: KeeperException Thrown: code: " (.code e) ", exception: " e))
                (throw e))))
          prom)
        (util/try*
          (.setData client path data version)
          (catch KeeperException e
            (do
-             (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+             (log/debug (str "set-data: KeeperException Thrown: code: " (.code e) ", exception: " e))
              (throw e)))))))
 
 
@@ -598,14 +602,14 @@
              (.getACL client path stat (acl-callback (promise-callback prom callback)) context)
              (catch KeeperException e
                (do
-                 (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+                 (log/debug (str "get-acl: KeeperException Thrown: code: " (.code e) ", exception: " e))
                  (throw e))))
          prom)
          {:acl (util/try*
                 (seq (.getACL client path stat))
                 (catch KeeperException e
                   (do
-                    (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+                    (log/debug (str "get-acl: KeeperException Thrown: code: " (.code e) ", exception: " e))
                     (throw e))))
           :stat (stat-to-map stat)}))))
 
@@ -616,7 +620,7 @@
       (.addAuthInfo client scheme (if (string? auth) (.getBytes auth) auth))
       (catch KeeperException e
         (do
-          (log/debug (str "KeeperException Thrown: code: " (.code e) ", exception: " e))
+          (log/debug (str "add-auth-info: KeeperException Thrown: code: " (.code e) ", exception: " e))
           (throw e))))))
 
 (defn acl-id
