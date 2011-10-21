@@ -2,7 +2,7 @@
 
 A Clojure DSL for Apache ZooKeeper and library of distributed concurrency primitives.
 
-Currently, there is a distributed implementation of java.util.concurrent.locks.Lock modeled after ReentrantLock. DistributedReentrantReadWriteLock will be the next distributed lock to implement. It will then be used to build distributed implementations of Clojure's concurrency primitives, Refs, Atoms, and Pods.
+Currently, there is a distributed implementation of java.util.concurrent.locks.Lock modeled after ReentrantLock. DistributedReentrantReadWriteLock will be the next distributed lock to implement. It will then be used to build a distributed implementation of Clojure's LockingTransaction, which then enables the creation of distributed versions of Clojure's concurrency primitives, Refs, Atoms, and Pods.
 
 
 ## treeherd.zookeeper
@@ -73,13 +73,19 @@ The macros when-lock-with-timeout and if-lock-with-timeout are also available.
 
 
 
-# Roadmap
+## Roadmap
 
 1. DistributedCondition
 2. DistributedReentrantReadWriteLock
-3. DistributedRef, an implementation of Clojure's IRef
-4. DisributedAtom
-5. DistributedPod
+3. DistributedLockingTransaction
+4. DistributedRef, an implementation of Clojure's IRef
+5. DisributedAtom
+6. DistributedPod
+
+## References
+
+* ZooKeeper http://zookeeper.apache.org/
+* ZooKeeper: Wait-free coordination for Internet-scale systems http://www.usenix.org/event/atc10/tech/full_papers/Hunt.pdf
 
 ## License
 
