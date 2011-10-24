@@ -1,5 +1,6 @@
 (ns treeherd.locks
   (:require [treeherd.zookeeper :as zk]
+            [treeherd.zookeeper.util :as zutil]
             [treeherd.logger :as log])
   (:import (java.util.concurrent.locks Lock ReentrantLock Condition)
            (java.util.concurrent TimeUnit)
@@ -76,14 +77,9 @@
            request-node (zk/create-all client path :sequential? true)]
        (subs request-node (inc (count lock-node))))))
 
-(defn find-lock-request-node
-  ([client lock-node request-id]
-     (when-let [requests (zk/children client lock-node)]
-       (first (filter #(re-find (re-pattern request-id) %) requests)))))
-
 (defn delete-lock-request-node
   ([client lock-node request-id]
-     (zk/delete client (str lock-node "/" (find-lock-request-node client lock-node request-id)))))
+     (zk/delete client (str lock-node "/" (first (zutil/filter-children-by-prefix client lock-node request-id))))))
 
 (defn delete-lock
   ([client lock-node]
@@ -96,7 +92,7 @@
 (defn get-owner
   ([client lock-node]
      (when-let [requests (zk/children client lock-node)]
-       (first (zk/sort-sequential-nodes requests)))))
+       (first (zutil/sort-sequential-nodes requests)))))
 
 (defn submit-lock-request
   ([client lock-node request-id local-lock lock-watcher]
@@ -106,7 +102,7 @@
            watcher (fn [event] (with-lock monitor-lock (.signal watched-node-event)))]
        (future
          (with-lock monitor-lock
-           (loop [lock-request-queue (zk/sort-sequential-nodes (zk/children client lock-node))]
+           (loop [lock-request-queue (zutil/sort-sequential-nodes (zk/children client lock-node))]
              (when (seq lock-request-queue) ;; if no requests in the queue, then exit
                ;; when the node-to-watch is nil, the requester is no longer in the queue, then exit
                (if-let [node-to-watch (find-next-lowest-node lock-request-node lock-request-queue)]
@@ -114,10 +110,45 @@
                    (do (when (= lock-request-node node-to-watch)
                          (lock-watcher)) ;; then lock-request-node is the new lock holder, invoke lock-watcher
                        (.await watched-node-event) ;; wait until zookeeper invokes the watcher, which calls notify
-                       (recur (zk/sort-sequential-nodes (zk/children client lock-node))))
+                       (recur (zutil/sort-sequential-nodes (zk/children client lock-node))))
                    ;; if the node-to-watch no longer exists recur to find the next node-to-watch
-                   (recur (zk/sort-sequential-nodes (zk/children client lock-node)))))))))
+                   (recur (zutil/sort-sequential-nodes (zk/children client lock-node)))))))))
        lock-request-node)))
+
+(deftype ZKDistributedCondition [client conditionNode requestId distributedLock localCondition]
+  Condition
+  ;; TODO
+  (await [this] nil)
+
+  ;; TODO
+  (await [this time unit] nil)
+
+  ;; TODO
+  (awaitNanos [this nanosTimeout] nil)
+
+  ;; TODO
+  (awaitUninterruptibly [this]
+    (let [local-lock (.localLock distributedLock)
+          cond-watcher (fn [event] (with-lock local-lock (.signal localCondition)))
+          path (zk/create-all client (str conditionNode "/" requestId "-") :sequential? true :watcher cond-watcher)]
+      (.unlock distributedLock)
+      (with-lock local-lock
+        (loop []
+          (if (zk/exists client path :watcher cond-watcher)
+            (do
+              (.awaitUninterruptibly localCondition)
+              (recur))
+            (.lock distributedLock))))))
+
+  ;; TODO
+  (awaitUntil [this data] nil)
+
+  ;; TODO
+  (signal [this] nil)
+
+  ;; TODO
+  (signalAll [this] nil))
+
 
 (deftype ZKDistributedReentrantLock [client lockNode requestId localLock]
   Lock
@@ -190,12 +221,17 @@
   (lockInterruptibly [this] nil)
 
   ;; TODO
-  (newCondition [this] nil)
+  (newCondition [this]
+    (ZKDistributedCondition. client
+                             (str lockNode "-condition-" (UUID/randomUUID))
+                             (UUID/randomUUID)
+                             this
+                             (.newCondition localLock)))
 
 
   DistributedLock
   (requestNode [this]
-    (find-lock-request-node client lockNode (.get requestId)))
+    (first (zutil/filter-children-by-prefix client lockNode (.get requestId))))
 
   (queuedRequests [this]
     (queued-requests client lockNode))
@@ -215,30 +251,6 @@
   DistributedReentrantLock
   (getHoldCount [this]
     (.getHoldCount localLock)))
-
-
-(deftype ZKDistributedCondition [client conditionNode requestId distributedLock localCondition]
-  Condition
-  ;; TODO
-  (await [this] nil)
-
-  ;; TODO
-  (await [this time unit] nil)
-
-  ;; TODO
-  (awaitNanos [this nanosTimeout] nil)
-
-  ;; TODO
-  (awaitUninterruptibly [this] nil)
-
-  ;; TODO
-  (awaitUntil [this data] nil)
-
-  ;; TODO
-  (signal [this] nil)
-
-  ;; TODO
-  (signalAll [this] nil))
 
 
 ;; public constructor for RKDistributedReentrantLock

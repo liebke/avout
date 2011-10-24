@@ -13,28 +13,34 @@
            prom2 (promise)
            prom3 (promise)
            worker3 (fn [prom]
-                     (future (when-lock lock (dosync (alter state #(conj % [3 1 :FAILED]))))
-                             (with-lock lock
-                               (dosync (alter state #(conj % [3 1 (.getHoldCount lock)]))))
-                             (deliver prom @state)))
-           worker2 (fn [prom]
-                     (future (with-lock lock
-                               (worker3 prom3)
-                               (Thread/sleep 2000)
-                               (dosync (alter state #(conj % [2 1 (.getHoldCount lock)])))
+                     (future (try
+                               (when-lock lock (dosync (alter state #(conj % [3 1 :FAILED]))))
                                (with-lock lock
-                                 (dosync (alter state #(conj % [2 2 (.getHoldCount lock)]))))
-                               (dosync (alter state #(conj % [2 3 (.getHoldCount lock)]))))
-                             (deliver prom @state)))
+                                 (dosync (alter state #(conj % [3 1 (.getHoldCount lock)]))))
+                               (deliver prom @state)
+                               (catch Throwable e (.printStackTrace e)))))
+           worker2 (fn [prom]
+                     (future (try
+                               (with-lock lock
+                                 (worker3 prom3)
+                                 (Thread/sleep 2000)
+                                 (dosync (alter state #(conj % [2 1 (.getHoldCount lock)])))
+                                 (with-lock lock
+                                   (dosync (alter state #(conj % [2 2 (.getHoldCount lock)]))))
+                                 (dosync (alter state #(conj % [2 3 (.getHoldCount lock)]))))
+                               (deliver prom @state)
+                               (catch Throwable e (.printStackTrace e)))))
            worker1 (fn [prom]
-                     (future (if-lock lock
-                                      (do (worker2 prom2)
-                                          (dosync (alter state #(conj % [1 1 (.getHoldCount lock)])))
-                                          (with-lock lock
-                                            (dosync (alter state #(conj % [1 2 (.getHoldCount lock)]))))
-                                          (dosync (alter state #(conj % [1 3 (.getHoldCount lock)]))))
-                                      (dosync (alter state #(conj % [1 1 :FAILED]))))
-                             (deliver prom @state)))]
+                     (future (try
+                               (if-lock lock
+                                       (do (worker2 prom2)
+                                           (dosync (alter state #(conj % [1 1 (.getHoldCount lock)])))
+                                           (with-lock lock
+                                             (dosync (alter state #(conj % [1 2 (.getHoldCount lock)]))))
+                                           (dosync (alter state #(conj % [1 3 (.getHoldCount lock)]))))
+                                       (dosync (alter state #(conj % [1 1 :FAILED]))))
+                               (deliver prom @state)
+                               (catch Throwable e (.printStackTrace e)))))]
        (worker1 prom1)
        @prom1
        @prom2
