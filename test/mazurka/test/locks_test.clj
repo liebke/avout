@@ -3,7 +3,7 @@
   (:use [clojure.test])
   (:import [java.util.concurrent TimeUnit]
            [java.util.concurrent.locks ReentrantLock])
-  (:require [zookeeper.core :as zk]))
+  (:require [zookeeper :as zk]))
 
 
 (defn test-lock

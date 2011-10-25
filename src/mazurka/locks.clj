@@ -1,5 +1,5 @@
 (ns mazurka.locks
-  (:require [zookeeper.core :as zk]
+  (:require [zookeeper :as zk]
             [zookeeper.util :as zutil]
             [zookeeper.logger :as log])
   (:import (java.util.concurrent.locks Lock ReentrantLock Condition)
@@ -272,7 +272,7 @@
 
   Examples:
 
-    (use 'zookeeper.core)
+    (use 'zookeeper)
     (use 'mazurka.locks)
     (require '[zookeeper.logger :as log])
 

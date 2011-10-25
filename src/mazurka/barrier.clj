@@ -1,5 +1,5 @@
 (ns mazurka.barrier
-  (:require [zookeeper.core :as zk])
+  (:require [zookeeper :as zk])
   (:import (java.net InetAddress)))
 
 ;; http://zookeeper.apache.org/doc/r3.3.3/api/index.html
@@ -16,7 +16,7 @@
   "
   Examples:
 
-    (use 'zookeeper.core)
+    (use 'zookeeper)
     (use 'mazurka.barrier)
     (def client (client \"127.0.0.1:2181\"))
 
@@ -47,7 +47,7 @@
   "
   Examples:
 
-    (use 'zookeeper.core)
+    (use 'zookeeper)
     (use 'mazurka.barrier)
     (def client (client \"127.0.0.1:2181\"))
     (defn make-processor [i] (fn [] (println (str \"process \" i \" is running \")) i))

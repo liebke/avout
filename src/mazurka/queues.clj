@@ -2,7 +2,7 @@
   (:import (java.util Queue
                       TreeMap)
            (org.apache.zookeeper KeeperException$NoNodeException))
-  (require [zookeeper.core :as zk]
+  (require [zookeeper :as zk]
            [zookeeper.util :as util]))
 
 (defn populate-tree-map
