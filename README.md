@@ -16,7 +16,7 @@ The mazurka.locks namespace contains an implementation of java.util.concurrent.l
 
 First require mazurka.zookeeper and mazurka.locks.
 
-    (require '(zookeeper.core :as zk))
+    (require '(zookeeper :as zk))
     (use 'mazurka.locks)
     
 Then get a ZooKeeper client.    
