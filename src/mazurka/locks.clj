@@ -1,17 +1,18 @@
-(ns treeherd.locks
-  (:require [treeherd.zookeeper :as zk]
-            [treeherd.zookeeper.util :as zutil]
-            [treeherd.logger :as log])
+(ns mazurka.locks
+  (:require [zookeeper.core :as zk]
+            [zookeeper.util :as zutil]
+            [zookeeper.logger :as log])
   (:import (java.util.concurrent.locks Lock ReentrantLock Condition)
            (java.util.concurrent TimeUnit)
            (java.util Date UUID)))
 
 (defprotocol DistributedLock
-  (requestNode [this] "Returns the child node representing this lock request instance")
-  (queuedRequests [this] "Returns all queued request-nodes for this distributed lock")
+  (requestNode [this] "Returns the child node representing this lock request instance.")
+  (queuedRequests [this] "Returns all queued request-nodes for this distributed lock.")
   (getOwner [this] "Returns the child node that holds the lock.")
   (deleteLock [this] "Deletes the distributed lock.")
-  (hasLock [this] "Indicates if the current thread has the lock"))
+  (hasLock [this] "Indicates if the current thread has the lock.")
+  (getCondition [this name] "Returns the condition with the given name."))
 
 (defprotocol DistributedReentrantLock
   (getHoldCount [this] "Gets the number of holds for this lock in the current thread"))
@@ -118,7 +119,7 @@
 (deftype ZKDistributedCondition [client conditionNode requestId distributedLock localCondition]
   Condition
   ;; TODO
-  (await [this] nil)
+  (await [this] (.awaitUninterruptibly this))
 
   ;; TODO
   (await [this time unit] nil)
@@ -127,9 +128,11 @@
   (awaitNanos [this nanosTimeout] nil)
 
   ;; TODO
+  ;; test
+  ;; (future (try (.lock dlock) (println "got lock, about to wait") (flush) (.awaitUninterruptibly dcond) (println "awake..") (flush) (catch Throwable e (.printStaceTrace e))))
   (awaitUninterruptibly [this]
     (let [local-lock (.localLock distributedLock)
-          cond-watcher (fn [event] (with-lock local-lock (.signal localCondition)))
+          cond-watcher (fn [event] (with-lock local-lock (log/debug "signaling condition") (.signal localCondition)))
           path (zk/create-all client (str conditionNode "/" requestId "-") :sequential? true :watcher cond-watcher)]
       (.unlock distributedLock)
       (with-lock local-lock
@@ -144,10 +147,14 @@
   (awaitUntil [this data] nil)
 
   ;; TODO
-  (signal [this] nil)
+  (signalAll [this]
+    (when-let [conditions-to-signal (zk/children client conditionNode)]
+      (zutil/delete-children client conditionNode :sort? true)))
 
   ;; TODO
-  (signalAll [this] nil))
+  (signal [this]
+    (when-let [conditions-to-signal (zk/children client conditionNode)]
+      (zk/delete client (str conditionNode "/" (first (zutil/sort-sequential-nodes conditions-to-signal)))))))
 
 
 (deftype ZKDistributedReentrantLock [client lockNode requestId localLock]
@@ -230,6 +237,12 @@
 
 
   DistributedLock
+  (getCondition [this conditionNode]
+    (ZKDistributedCondition. client
+                             conditionNode
+                             (UUID/randomUUID)
+                             this
+                             (.newCondition localLock)))
   (requestNode [this]
     (first (zutil/filter-children-by-prefix client lockNode (.get requestId))))
 
@@ -259,8 +272,9 @@
 
   Examples:
 
-    (use '(treeherd zookeeper locks))
-    (require '[treeherd.logger :as log])
+    (use 'zookeeper.core)
+    (use 'mazurka.locks)
+    (require '[zookeeper.logger :as log])
 
     (def client (connect \"127.0.0.1\"))
 

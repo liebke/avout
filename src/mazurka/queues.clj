@@ -1,9 +1,9 @@
-(ns treeherd.queues
+(ns mazurka.queues
   (:import (java.util Queue
                       TreeMap)
            (org.apache.zookeeper KeeperException$NoNodeException))
-  (require [treeherd.zookeeper :as zk]
-           [treeherd.util :as util]))
+  (require [zookeeper.core :as zk]
+           [zookeeper.util :as util]))
 
 (defn populate-tree-map
   ([client tree-map dir]

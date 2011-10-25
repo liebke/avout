@@ -1,5 +1,5 @@
-(ns treeherd.barrier
-  (:require [treeherd.zookeeper :as zk])
+(ns mazurka.barrier
+  (:require [zookeeper.core :as zk])
   (:import (java.net InetAddress)))
 
 ;; http://zookeeper.apache.org/doc/r3.3.3/api/index.html
@@ -16,7 +16,8 @@
   "
   Examples:
 
-    (use '(treeherd zookeeper barrier))
+    (use 'zookeeper.core)
+    (use 'mazurka.barrier)
     (def client (client \"127.0.0.1:2181\"))
 
     ;; start a three process barrier and set leave-on-completion? to false
@@ -46,7 +47,8 @@
   "
   Examples:
 
-    (use '(treeherd zookeeper barrier))
+    (use 'zookeeper.core)
+    (use 'mazurka.barrier)
     (def client (client \"127.0.0.1:2181\"))
     (defn make-processor [i] (fn [] (println (str \"process \" i \" is running \")) i))
     (delete-all client \"/barrier\")

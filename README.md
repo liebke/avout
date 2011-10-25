@@ -1,28 +1,23 @@
-# Treeherd
+# Mazurka
 
-A Clojure DSL for Apache ZooKeeper and library of distributed concurrency primitives.
+A Clojure library of distributed concurrency primitives built on Apache ZooKeeper.
 
 Currently, there is a distributed implementation of java.util.concurrent.locks.Lock modeled after ReentrantLock. DistributedReentrantReadWriteLock will be the next distributed lock to implement. It will then be used to build a distributed implementation of Clojure's LockingTransaction, which then enables the creation of distributed versions of Clojure's concurrency primitives, Refs, Atoms, and Pods.
 
 The plan for the first implementations of Refs and Atoms (ZKDataRef and ZKDataAtom) will use the ZooKeeper znode's data field on the distributed-lock used for the transaction to hold the serialized Clojure form (method of serialization TBD), and provide a mechanism for distributing the value to all the participating clients. This first phase provides idiomatic Clojure access to ZooKeeper data fields, the next phase will generalize the distributed serialization mechanism so that other methods (that don't have a 1M data size limit) can be used, e.g direct peer-to-peer serialization, HDFS, and distributed data stores.
 
 
-## treeherd.zookeeper
+## mazurka.locks
 
-The treeherd.zookeeper namespace contains the ZooKeeper DSL.
-
-
-## treeherd.locks
-
-The treeherd.locks namespace contains an implementation of java.util.concurrent.locks.Lock, called ZKDistributedReentrantLock, that provides a distributed lock.
+The mazurka.locks namespace contains an implementation of java.util.concurrent.locks.Lock, called ZKDistributedReentrantLock, that provides a distributed lock.
 
 ### Examples
 
 
-First require treeherd.zookeeper and treeherd.locks.
+First require mazurka.zookeeper and mazurka.locks.
 
-    (require '(treeherd.zookeeper :as zk))
-    (use 'treeherd.locks)
+    (require '(zookeeper.core :as zk))
+    (use 'mazurka.locks)
     
 Then get a ZooKeeper client.    
 

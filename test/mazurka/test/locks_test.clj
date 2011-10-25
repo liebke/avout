@@ -1,9 +1,9 @@
-(ns treeherd.test.locks_test
-  (:use [treeherd.locks])
+(ns mazurka.test.locks_test
+  (:use [mazurka.locks])
   (:use [clojure.test])
   (:import [java.util.concurrent TimeUnit]
            [java.util.concurrent.locks ReentrantLock])
-  (:require [treeherd.zookeeper :as zk]))
+  (:require [zookeeper.core :as zk]))
 
 
 (defn test-lock
@@ -76,12 +76,41 @@
        @prom3
        @state)))
 
+(defn test-conditions
+  ([lock]
+     (let [test-cond (.newCondition lock)
+           state (ref [])
+           prom1 (promise)
+           prom2 (promise)
+           worker2 (fn [prom]
+                     (future
+                       (with-lock lock
+                         (dosync (alter state #(conj % [2 1 (.getHoldCount lock)])))
+                         (.signal test-cond)
+                         (dosync (alter state #(conj % [2 2 (.getHoldCount lock)])))
+                         (deliver prom @state)
+                         (catch Throwable e (.printStaceTrace e)))))
+           worker1 (fn [prom]
+                     (future
+                       (with-lock lock
+                         (dosync (alter state #(conj % [1 1 (.getHoldCount lock)])))
+                         (worker2 prom2)
+                         (.await test-cond)
+                         (dosync (alter state #(conj % [1 2 (.getHoldCount lock)])))
+                         (deliver prom @state)
+                         (catch Throwable e (.printStaceTrace e)))))]
+       (worker1 prom1)
+       @prom1
+       @prom2
+       @state)))
+
 (deftest locking-test
   (let [client (zk/connect "127.0.0.1")
         _ (zk/delete-all client "/testing-lock")
         _ (zk/delete-all client "/testing-lock-timeout")
         locking-results (test-lock (distributed-lock client :lock-node "/testing-lock"))
-        locking-timeout-results (test-lock-with-timeout (distributed-lock client :lock-node "/testing-lock-timeout"))]
+        locking-timeout-results (test-lock-with-timeout (distributed-lock client :lock-node "/testing-lock-timeout"))
+        conditions-results (test-conditions (distributed-lock client :lock-node "/conditions-lock"))]
 
     ;; distributed-lock should behave just like ReentrantLock
     (is (= locking-results (test-lock (ReentrantLock. true))))
@@ -92,4 +121,7 @@
     (is (= locking-timeout-results (test-lock-with-timeout (ReentrantLock. true))))
 
     (is (= locking-timeout-results [[3 1 0] [1 1 1] [2 1 1]]))
+
+    (is (= conditions-results [[1 1 1] [2 1 1] [2 2 1] [1 2 1]]))
+
     (.close client)))
