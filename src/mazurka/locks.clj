@@ -80,7 +80,7 @@
 
 (defn delete-lock-request-node
   ([client lock-node request-id]
-     (zk/delete client (str lock-node "/" (first (zutil/filter-children-by-prefix client lock-node request-id))))))
+     (zk/delete client (str lock-node "/" (first (zk/filter-children-by-prefix client lock-node request-id))))))
 
 (defn delete-lock
   ([client lock-node]
@@ -149,7 +149,7 @@
   ;; TODO
   (signalAll [this]
     (when-let [conditions-to-signal (zk/children client conditionNode)]
-      (zutil/delete-children client conditionNode :sort? true)))
+      (zk/delete-children client conditionNode :sort? true)))
 
   ;; TODO
   (signal [this]
@@ -244,7 +244,7 @@
                              this
                              (.newCondition localLock)))
   (requestNode [this]
-    (first (zutil/filter-children-by-prefix client lockNode (.get requestId))))
+    (first (zk/filter-children-by-prefix client lockNode (.get requestId))))
 
   (queuedRequests [this]
     (queued-requests client lockNode))
