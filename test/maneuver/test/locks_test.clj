@@ -1,5 +1,5 @@
-(ns mazurka.test.locks_test
-  (:use [mazurka.locks])
+(ns maneuver.test.locks_test
+  (:use [maneuver.locks])
   (:use [clojure.test])
   (:import [java.util.concurrent TimeUnit]
            [java.util.concurrent.locks ReentrantLock])

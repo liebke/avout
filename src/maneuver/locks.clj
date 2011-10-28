@@ -1,5 +1,5 @@
-(ns mazurka.locks
-  (:require [mazurka.locks.internal :as mli]
+(ns maneuver.locks
+  (:require [maneuver.locks.internal :as mli]
             [zookeeper :as zk]
             [zookeeper.util :as zutil]
             [zookeeper.logger :as log])
@@ -219,7 +219,7 @@
   Examples:
 
     (use 'zookeeper)
-    (use 'mazurka.locks)
+    (use 'maneuver.locks)
     (require '[zookeeper.logger :as log])
 
     (def client (connect \"127.0.0.1\"))

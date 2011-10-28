@@ -1,4 +1,4 @@
-(ns mazurka.locks.internal
+(ns maneuver.locks.internal
   (:require [zookeeper :as zk]
             [zookeeper.util :as zutil]
             [zookeeper.logger :as log])

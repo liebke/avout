@@ -1,5 +1,5 @@
-(ns mazurka.test.barrier-test
-  (:use [mazurka barrier]
+(ns maneuver.test.barrier-test
+  (:use [maneuver barrier]
         [zookeeper]
         [clojure test])
   (:import (java.util UUID)))

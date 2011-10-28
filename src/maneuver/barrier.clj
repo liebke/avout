@@ -1,4 +1,4 @@
-(ns mazurka.barrier
+(ns maneuver.barrier
   (:require [zookeeper :as zk]
             [zookeeper.util :as zutil])
   (:import (java.net InetAddress)))
@@ -49,7 +49,7 @@
   Examples:
 
     (use 'zookeeper)
-    (use 'mazurka.barrier)
+    (use 'maneuver.barrier)
     (def client (client \"127.0.0.1:2181\"))
 
     (enter-barrier client 2 #(println \"First process is running\"))
@@ -57,7 +57,7 @@
     ;; From another REPL, execute the following
 
     (use 'zookeeper)
-    (use 'mazurka.barrier)
+    (use 'maneuver.barrier)
     (def client (client \"127.0.0.1:2181\"))
 
     (enter-barrier client 2 #(println \"Second process is running\") :proc-name \"node2\")

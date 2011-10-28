@@ -1,4 +1,4 @@
-(ns mazurka.queues
+(ns maneuver.queues
   (:import (java.util Queue
                       TreeMap)
            (org.apache.zookeeper KeeperException$NoNodeException))
