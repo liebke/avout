@@ -3,7 +3,9 @@
             [zookeeper :as zk]
             [zookeeper.util :as zutil]
             [zookeeper.logger :as log])
-  (:import (java.util.concurrent.locks Lock ReentrantLock Condition)
+  (:import (java.util.concurrent.locks Lock ReentrantLock Condition
+                                       ReadWriteLock
+                                       ReentrantReadWriteLock)
            (java.util.concurrent TimeUnit)
            (java.util Date UUID)))
 
@@ -65,18 +67,10 @@
 
   Condition ;; methods for the java.util.concurrent.locks.Condition interface
 
-  (await [this] (.awaitUninterruptibly this))
-
-  ;; TODO
-  (await [this time unit] (throw (RuntimeException. "UnimplementedMethodException")))
-
-  ;; TODO
-  (awaitNanos [this nanosTimeout] (throw (RuntimeException. "UnimplementedMethodException")))
-
   (awaitUninterruptibly [this]
     (let [local-lock (.localLock distributedLock)
-          cond-watcher (fn [event] (with-lock local-lock (log/debug "signaling condition") (.signal localCondition)))
-          path (zk/create-all client (str conditionNode "/" requestId "-") :sequential? true :watcher cond-watcher)]
+          cond-watcher (fn [event] (with-lock local-lock (.signal localCondition)))
+          path (zk/create-all client (str conditionNode "/" requestId "-") :sequential? true)]
       (.unlock distributedLock)
       (with-lock local-lock
         (loop []
@@ -86,8 +80,7 @@
               (recur))
             (.lock distributedLock))))))
 
-  ;; TODO
-  (awaitUntil [this date] (throw (RuntimeException. "UnimplementedMethodException")))
+  (await [this] (.awaitUninterruptibly this))
 
   (signalAll [this]
     (when-let [conditions-to-signal (zk/children client conditionNode)]
@@ -95,7 +88,16 @@
 
   (signal [this]
     (when-let [conditions-to-signal (zk/children client conditionNode)]
-      (zk/delete client (str conditionNode "/" (first (zutil/sort-sequential-nodes conditions-to-signal)))))))
+      (zk/delete client (str conditionNode "/" (first (zutil/sort-sequential-nodes conditions-to-signal))))))
+
+  ;; TODO
+  (await [this time unit] (throw (UnsupportedOperationException.)))
+
+  ;; TODO
+  (awaitNanos [this nanosTimeout] (throw (UnsupportedOperationException.)))
+
+  ;; TODO
+  (awaitUntil [this date] (throw (UnsupportedOperationException.))))
 
 
 (deftype ZKDistributedReentrantLock [client lockNode requestId localLock]
@@ -112,7 +114,7 @@
         (let [lock-granted (.newCondition localLock)
               watcher #(with-lock localLock (.signal lock-granted))]
           (.set requestId (.toString (UUID/randomUUID)))
-          (mli/submit-lock-request client lockNode (.get requestId) localLock watcher)
+          (mli/submit-lock-request client lockNode (.get requestId) watcher)
           (.lock localLock)
           (.await lock-granted))))
 
@@ -131,7 +133,7 @@
       :else
         (if (.tryLock localLock)
           (do (.set requestId (.toString (UUID/randomUUID)))
-              (mli/submit-lock-request client lockNode (.get requestId) localLock nil)
+              (mli/submit-lock-request client lockNode (.get requestId) nil)
               (.sync client lockNode nil nil)
               (if (.hasLock this)
                 true
@@ -154,7 +156,7 @@
             (let [time-left (- (.toNanos unit time) (- (System/nanoTime) start-time))
                   watcher #(when-lock-with-timeout localLock time-left (TimeUnit/NANOSECONDS) (.signal lock-event))]
               (.set requestId (.toString (UUID/randomUUID)))
-              (mli/submit-lock-request client lockNode (.get requestId) localLock watcher)
+              (mli/submit-lock-request client lockNode (.get requestId) watcher)
               (.awaitNanos lock-event time-left)
               (cond
                 (Thread/interrupted)
@@ -167,7 +169,7 @@
                       false)))
             false))))
 
-  (lockInterruptibly [this] (throw (RuntimeException. "UnimplementedMethodException")))
+  (lockInterruptibly [this] (throw (UnsupportedOperationException.)))
 
   (newCondition [this]
     (ZKDistributedCondition. client
@@ -271,4 +273,140 @@
      (ZKDistributedReentrantLock. client lock-node
                                   (doto (ThreadLocal.) (.set request-id))
                                   (ReentrantLock. true))))
+
+
+
+;; read-write lock
+
+(deftype ZKDistributedReentrantReadWriteLock [distributedReadLock distributedWriteLock localReadWriteLock]
+
+  ReadWriteLock ;; methods for the java.util.concurrent.locks.ReadWriteLock interface
+
+  (writeLock [this] distributedWriteLock)
+
+  (readLock [this] distributedReadLock))
+
+
+(deftype ZKDistributedReentrantReadLock [client lockNode requestId localLock]
+
+  Lock ;; methods for the java.util.concurrent.locks.Lock interface
+
+  (lock [this]
+    (cond
+      (= (zk/state client) :CLOSED)
+        (throw (RuntimeException. "ZooKeeper session is closed, invalidating this lock object"))
+      (> (.getReadHoldCount localLock) 0) ;; checking for reentrancy
+        (.lock (.readLock localLock)) ;; if so, lock the local reentrant-lock again, but don't create a new distributed lock request
+      :else
+        (let [lock (ReentrantLock. true)
+              lock-event (.newCondition lock)
+              watcher #(with-lock lock (.signal lock-event))]
+          (with-lock lock
+            (.set requestId (str "read-" (.toString (UUID/randomUUID))))
+            (mli/submit-read-lock-request client lockNode (.get requestId) watcher)
+            (.await lock-event)
+            (.lock (.readLock localLock))))))
+
+  (unlock [this]
+    (try
+      (when (= (.getReadHoldCount localLock) 1)
+        (mli/delete-lock-request-node client lockNode (.get requestId)))
+      (finally (.unlock (.readLock localLock)))))
+
+  (tryLock [this]
+    (cond
+      (= (zk/state client) :CLOSED)
+        (throw (RuntimeException. "ZooKeeper session is closed, invalidating this lock object"))
+      (> (.getReadHoldCount localLock) 0) ;; checking for reentrancy
+        (.tryLock (.readLock localLock)) ;; if so, lock the local reentrant-lock again, but don't create a new distributed lock request
+      :else
+        (if (.tryLock (.readLock localLock))
+          (do (.set requestId (str "read-" (.toString (UUID/randomUUID))))
+              (mli/submit-read-lock-request client lockNode (.get requestId) nil)
+              (.sync client lockNode nil nil)
+              (if (.hasLock this)
+                true
+                (do (mli/delete-lock-request-node client lockNode (.get requestId))
+                    false)))
+          false)))
+
+  (tryLock [this time unit]
+    (cond
+      (= (zk/state client) :CLOSED)
+        (throw (RuntimeException. "ZooKeeper session is closed, invalidating this lock object"))
+      (Thread/interrupted)
+        (throw (InterruptedException.))
+      (> (.getReadHoldCount localLock) 0) ;; checking for reentrancy
+        (.tryLock (.readLock localLock) time unit) ;; lock the local reentrant-lock again, but don't create a new distributed lock request
+      :else
+        (let [lock (ReentrantLock. true)
+              lock-event (.newCondition lock)
+              start-time (System/nanoTime)]
+          (if (.tryLock (.readLock localLock) time unit)
+            (let [time-left (- (.toNanos unit time) (- (System/nanoTime) start-time))
+                  watcher #(when-lock-with-timeout lock time-left (TimeUnit/NANOSECONDS) (.signal lock-event))]
+              (.set requestId (str "read-" (.toString (UUID/randomUUID))))
+              (mli/submit-read-lock-request client lockNode (.get requestId) watcher)
+              (.awaitNanos lock-event time-left)
+              (cond
+                (Thread/interrupted)
+                  (do (mli/delete-lock-request-node client lockNode (.get requestId))
+                      (throw (InterruptedException.)))
+                (.hasLock this)
+                  true
+                :else
+                  (do (mli/delete-lock-request-node client lockNode (.get requestId))
+                      false)))
+            false))))
+
+  (lockInterruptibly [this] (throw (UnsupportedOperationException.)))
+
+  (newCondition [this]
+    ;; Read locks don't support conditions
+    (throw (UnsupportedOperationException.)))
+
+
+  DistributedLock ;; methods for the DistributedLock protocol
+
+  (getCondition [this conditionNode]
+    (throw (UnsupportedOperationException.)))
+
+  (requestNode [this]
+    (first (zk/filter-children-by-prefix client lockNode (.get requestId))))
+
+  (queuedRequests [this]
+    (mli/queued-requests client lockNode))
+
+  (getOwner [this]
+    (mli/get-owner client lockNode))
+
+  (deleteLock [this]
+    (mli/delete-lock client lockNode))
+
+  (hasLock [this]
+    (and (not= (zk/state client) :CLOSED)
+         (.isWriteLockedByCurrentThread localLock)
+         (= (.requestNode this) (.getOwner this))))
+
+
+  DistributedReentrantLock ;; methods for the DistributedReentrantLock protocol
+
+  (getHoldCount [this]
+    (.getReadHoldCount localLock)))
+
+
+(defn distributed-read-write-lock
+  ([client & {:keys [lock-node request-id]
+              :or {lock-node "/read-write-lock"}}]
+     (let [read-write-lock (ReentrantReadWriteLock. true)]
+       (ZKDistributedReentrantReadWriteLock.
+         (ZKDistributedReentrantReadLock.
+           client lock-node
+           (doto (ThreadLocal.) (.set (str "read-"  request-id)))
+           read-write-lock)
+         (ZKDistributedReentrantLock.
+           client lock-node
+           (doto (ThreadLocal.) (.set (str "write-" request-id)))
+           read-write-lock)
+         read-write-lock))))
 
