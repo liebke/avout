@@ -1,5 +1,5 @@
-(ns maneuver.locks
-  (:require [maneuver.locks.internal :as mli]
+(ns avout.locks
+  (:require [avout.locks.internal :as mli]
             [zookeeper :as zk]
             [zookeeper.util :as zutil]
             [zookeeper.logger :as log])
@@ -219,7 +219,7 @@
   Examples:
 
     (use 'zookeeper)
-    (use 'maneuver.locks)
+    (use 'avout.locks)
     (require '[zookeeper.logger :as log])
 
     (def client (connect \"127.0.0.1\"))

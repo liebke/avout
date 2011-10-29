@@ -1,4 +1,4 @@
-(ns maneuver.locks.internal
+(ns avout.locks.internal
   (:require [zookeeper :as zk]
             [zookeeper.util :as zutil]
             [zookeeper.logger :as log])

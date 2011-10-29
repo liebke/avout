@@ -1,4 +1,4 @@
-(ns maneuver.queues
+(ns avout.queues
   (:import (java.util Queue
                       TreeMap)
            (org.apache.zookeeper KeeperException$NoNodeException))
