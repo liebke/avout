@@ -14,6 +14,8 @@ The **TransactionReference** protocol is used to create transaction references t
     (defprotocol TransactionReference
       (set [this value point] "Returns the ZKDistributedReentrantReadWriteLock associated with this reference.")
       (get [this point] "Returns the value associated with given clock point."))
+      
+The default TransactionReference implementation, ZKRef, uses the data fields of the reference's tval nodes to hold the values for the reference. Other implementations that access RESTful services, (No)SQL databases, or other data services can participate in transactions together.
 
 **Commute**, **Alter**, and **Ensure** are optional protocols to support common reference behaviors.
 
@@ -32,13 +34,15 @@ A TransactionReference holds all the values it has been set to over its lifetime
 <img src="https://github.com/liebke/avout/raw/master/docs/images/transref.png" />
 
 
-The following figure illustrates the MVCC transaction process.
+The following figure illustrates Clojure's standard MVCC transaction process.
 
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
 
-ZKRef implements the clojure.lang.IRef interface and the TransactionReference, Commute, Alter, and Ensure protocols.
+## ZKRef
+
+ZKRef implements the clojure.lang.IRef interface and the TransactionReference, Commute, Alter, and Ensure protocols. ZKRef uses the data field of the reference's tval nodes to hold its values.
 
 
 
