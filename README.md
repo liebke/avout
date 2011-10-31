@@ -4,21 +4,19 @@ Avout is a Clojure library of distributed concurrency primitives built on Apache
 
 Currently, there is a distributed implementation of java.util.concurrent.locks.Lock modeled after ReentrantLock. DistributedReentrantReadWriteLock will be the next distributed lock to implement. It will then be used to build a distributed implementation of Clojure's LockingTransaction, which then enables the creation of distributed versions of Clojure's concurrency primitives, Refs, Atoms, and Pods.
 
-The plan for the first implementations of Refs and Atoms (ZKDataRef and ZKDataAtom) will use the ZooKeeper znode's data field on the distributed-lock used for the transaction to hold the serialized Clojure form (method of serialization TBD), and provide a mechanism for distributing the value to all the participating clients. This first phase provides idiomatic Clojure access to ZooKeeper data fields, the next phase will generalize the distributed serialization mechanism so that other methods (that don't have a 1M data size limit) can be used, e.g direct peer-to-peer serialization, HDFS, and distributed data stores.
-
 
 ## avout.transaction
 
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
-## ZooKeeper Recipe for MVCC STM using Instances of TransactionReference
+## ZooKeeper Recipe for MVCC Locking Transaction using Instances of TransactionReference
 
 To run a transaction:
 
 1. Start a transaction by creating a persistent, sequential node **/stm/clock/t-** that represents the read-point for the transaction.
-2. Use *getLock* on each *TransactionReference* in the transaction to acquire write-locks for each instance that will be altered during the transaction, and read-locks for those that will only be read (if any lock cannot be acquired or any other exception occurs during the remaining steps, end the transaction (and clean up) and then retry it (goto step 1) until success or RETRY_MAX is reached).
-3. Find the most recent committed transaction-value node for each *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that xxxxxxxxxx is less than, or equal to, the current read-point and **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists. 
+2. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock** as the lock-node, then acquire write-locks for each reference that will be altered during the transaction, and read-locks for those that will only be read (if any lock cannot be acquired or any other exception occurs during the remaining steps, end the transaction (and clean up) and then retry it (goto step 1) until success or RETRY_MAX is reached).
+3. Find the most recent committed transaction-value node for each *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that the integer xxxxxxxxxx is less than, or equal to, the current read-point and **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists. 
 4. Make local copies of the current values for each *TransactionReference* at the latest committed point earlier than this transactions read-point by calling the *get* method on each *TransactionReference* passing the point extracted from the last committed transaction-value node.
 5. Apply the respective functions (passed in via *alter* and *commute* functions) to the current values for each *TransactionReference*, updating the local cache.
 6. Create a persistent, sequential node **stm/clock/t-** that represents the commit-point for this transaction.
@@ -29,8 +27,8 @@ To run a transaction:
 
 To invoke *deref* on a *TransactionReference* outside of a transaction: 
 
-1. Use *getLock* on the *TransactionReference* to acquire its read-lock.
-2. Find the most recent committed transaction-value node for the *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that xxxxxxxxxx is less than, or equal to, the most recent clock tick, **/stm/clock/t-xxxxxxxxxx**, where **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists.
+1. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock** as the lock-node, then acquire a read-lock on the reference.
+2. Find the most recent committed transaction-value node for the *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that the integer xxxxxxxxxx is less than, or equal to, the most recent clock tick, **/stm/clock/t-xxxxxxxxxx**, where **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists.
 3. Invoke the *get* method on the *TransactionReference*
 4. Release the read-lock
 
@@ -42,8 +40,7 @@ The following protocols can be used to create transaction references that can be
 
     (defprotocol TransactionReference
       (set [this value point] "Returns the ZKDistributedReentrantReadWriteLock associated with this reference.")
-      (get [this point] "Returns the value associated with given clock point.")
-      (getLock [this] "Returns the ZKDistributedReentrantReadWriteLock associated with this reference."))
+      (get [this point] "Returns the value associated with given clock point."))
       
     (defprotocol Commute
       (commute [this f & args]))
@@ -127,7 +124,6 @@ The macros when-lock-with-timeout and if-lock-with-timeout are also available.
 
 ## Roadmap
 
-1. DistributedCondition
 2. DistributedReentrantReadWriteLock
 3. DistributedLockingTransaction
 4. DistributedRef, an implementation of Clojure's IRef
