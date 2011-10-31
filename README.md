@@ -20,7 +20,7 @@ The plan for the first implementations of Refs and Atoms (ZKDataRef and ZKDataAt
 
 The avout.locks namespace contains an implementation of java.util.concurrent.locks.Lock, called ZKDistributedReentrantLock, that provides a distributed lock.
 
-<img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stml.png" />
+<img src="https://github.com/liebke/avout/raw/master/docs/images/locks.png" />
 
 ### Examples
 
