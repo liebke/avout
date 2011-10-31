@@ -7,12 +7,44 @@ Currently, there is a distributed implementation of java.util.concurrent.locks.L
 
 ## avout.transaction
 
+### Transaction Reference Protocols
+
+The **TransactionReference** protocol is used to create transaction references that can participate in Avout transactions.
+
+    (defprotocol TransactionReference
+      (set [this value point] "Returns the ZKDistributedReentrantReadWriteLock associated with this reference.")
+      (get [this point] "Returns the value associated with given clock point."))
+
+**Commute**, **Alter**, and **Ensure** are optional protocols to support common reference behaviors.
+
+    (defprotocol Commute
+      (commute [this f & args]))
+
+    (defprotocol Alter
+      (alter [this f & args]))
+
+    (defprotocol Ensure
+      (ensure [this]))
+
+
+A TransactionReference holds all the values it has been set to over its lifetime, keyed by the commit-point, i.e. the clock tick of the transaction manager, when the value was set. Uncommitted values may exist in a TransactionReference. The transaction manager can be queried to determine if the commit-point associated with a given value in a TransactionReference was in fact committed.
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
+
+The following figure illustrates the MVCC transaction process.
+
+
+<img src="https://github.com/liebke/avout/raw/master/docs/images/transref.png" />
+
+
+ZKRef implements the clojure.lang.IRef interface and the TransactionReference, Commute, Alter, and Ensure protocols.
+
+
+
 ## ZooKeeper Recipe for MVCC Locking Transaction using Instances of TransactionReference
 
-To run a transaction:
+Setting values in a transaction:
 
 1. Start a transaction by creating a persistent, sequential node **/stm/clock/t-** that represents the read-point for the transaction.
 2. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock** as the lock-node, then acquire write-locks for each reference that will be altered during the transaction, and read-locks for those that will only be read (if any lock cannot be acquired or any other exception occurs during the remaining steps, end the transaction (and clean up) and then retry it (goto step 1) until success or RETRY_MAX is reached).
@@ -32,29 +64,6 @@ To invoke *deref* on a *TransactionReference* outside of a transaction:
 3. Invoke the *get* method on the *TransactionReference*
 4. Release the read-lock
 
-
-
-### Transaction Protocols
-
-The following protocols can be used to create transaction references that can be used by avout.transaction.
-
-    (defprotocol TransactionReference
-      (set [this value point] "Returns the ZKDistributedReentrantReadWriteLock associated with this reference.")
-      (get [this point] "Returns the value associated with given clock point."))
-      
-    (defprotocol Commute
-      (commute [this f & args]))
-
-    (defprotocol Alter
-      (alter [this f & args]))
-
-    (defprotocol Ensure
-      (ensure [this]))
-
-<img src="https://github.com/liebke/avout/raw/master/docs/images/transref.png" />
-
-
-ZKRef implements the clojure.lang.IRef interface and the TransactionReference, Commute, Alter, and Ensure protocols.
 
 
 ## avout.locks
