@@ -29,13 +29,13 @@ The **TransactionReference** protocol is used to create transaction references t
 
 A TransactionReference holds all the values it has been set to over its lifetime, keyed by the commit-point, i.e. the clock tick of the transaction manager, when the value was set. Uncommitted values may exist in a TransactionReference. The transaction manager can be queried to determine if the commit-point associated with a given value in a TransactionReference was in fact committed.
 
-<img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
+<img src="https://github.com/liebke/avout/raw/master/docs/images/transref.png" />
 
 
 The following figure illustrates the MVCC transaction process.
 
 
-<img src="https://github.com/liebke/avout/raw/master/docs/images/transref.png" />
+<img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
 
 ZKRef implements the clojure.lang.IRef interface and the TransactionReference, Commute, Alter, and Ensure protocols.
