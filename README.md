@@ -1,18 +1,19 @@
-# Avout
+# About Avout
 
-Avout is a Clojure library of distributed concurrency primitives built on Apache ZooKeeper.
-
-Currently, there is a distributed implementation of java.util.concurrent.locks.Lock modeled after ReentrantLock. DistributedReentrantReadWriteLock will be the next distributed lock to implement. It will then be used to build a distributed implementation of Clojure's LockingTransaction, which then enables the creation of distributed versions of Clojure's concurrency primitives, Refs, Atoms, and Pods.
+Avout is a Clojure library of distributed concurrency primitives, including an extensible, distributed STM for managing the state of remote, heterogeneous resources with the same atomicity, consistency, and isolation that Clojure's STM provides when managing local state.
 
 
 ## avout.transaction
 
 ### Transaction Reference Protocols
 
-The **TransactionReference** protocol is used to create transaction references that can participate in Avout transactions.
+Transactions are system- and thread-local (as are Clojure's dosync transactions) but the transaction references (Refs) that participate may be distributed across multiple JVMs/systems. 
+
+New types of Refs can be created by implementing the **TransactionReference** protocol.
 
     (defprotocol TransactionReference
-      (set [this value point] "Returns the ZKDistributedReentrantReadWriteLock associated with this reference.")
+      (name [this] "Returns the ZooKeeper node name associated with this reference.")
+      (set [this value point] "Sets the transaction-value associated with the given clock point.")
       (get [this point] "Returns the value associated with given clock point."))
       
 The default TransactionReference implementation, ZKRef, uses the data fields of the reference's tval nodes to hold the values for the reference. Other implementations that access RESTful services, (No)SQL databases, or other data services can participate in transactions together.
@@ -51,19 +52,19 @@ ZKRef implements the clojure.lang.IRef interface and the TransactionReference, C
 Setting values in a transaction:
 
 1. Start a transaction by creating a persistent, sequential node **/stm/clock/t-** that represents the read-point for the transaction.
-2. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock** as the lock-node, then acquire write-locks for each reference that will be altered during the transaction, and read-locks for those that will only be read (if any lock cannot be acquired or any other exception occurs during the remaining steps, end the transaction (and clean up) and then retry it (goto step 1) until success or RETRY_MAX is reached).
+2. Create a new **ZKDistributedReentrantReadWriteLock** (which is based on <a href="http://zookeeper.apache.org/doc/trunk/recipes.html#Shared+Locks">this recipe</a>) using **/ref-name/lock**, where ref-name is the value returned from the **TransactionReference** *name* method, as the lock-node, then acquire write-locks for each reference that will be altered during the transaction, and read-locks for those that will only be read (if any lock cannot be acquired or any other exception occurs during the remaining steps, end the transaction (and clean up) and then retry it (goto step 1) until success or RETRY_MAX is reached).
 3. Find the most recent committed transaction-value node for each *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that the integer xxxxxxxxxx is less than, or equal to, the current read-point and **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists. 
 4. Make local copies of the current values for each *TransactionReference* at the latest committed point earlier than this transactions read-point by calling the *get* method on each *TransactionReference* passing the point extracted from the last committed transaction-value node.
 5. Apply the respective functions (passed in via *alter* and *commute* functions) to the current values for each *TransactionReference*, updating the local cache.
 6. Create a persistent, sequential node **stm/clock/t-** that represents the commit-point for this transaction.
 7. Call the *set* method for each *TransactionReference*, passing the new value and the commit-point extracted from the node created in the previous step.
-8. Once all the *TransactionReference* values have been updated, create a persistent node named **/tmp/clock/t-xxxxxxxxxx/COMMITTED** to indicate that the transaction has been committed, and all references with tvals at t-xxxxxxxxxx are committed.
+8. Once all the *TransactionReference* values have been updated, create a persistent node named **/stm/clock/t-xxxxxxxxxx/COMMITTED** to indicate that the transaction has been committed, and all references with tvals at t-xxxxxxxxxx are committed.
 9. release the locks on all refs in the transaction.
 
 
 To invoke *deref* on a *TransactionReference* outside of a transaction: 
 
-1. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock** as the lock-node, then acquire a read-lock on the reference.
+1. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock**, where ref-name is the value returned from the **TransactionReference** *name* method, as the lock-node, then acquire a read-lock on the reference.
 2. Find the most recent committed transaction-value node for the *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that the integer xxxxxxxxxx is less than, or equal to, the most recent clock tick, **/stm/clock/t-xxxxxxxxxx**, where **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists.
 3. Invoke the *get* method on the *TransactionReference*
 4. Release the read-lock
@@ -72,7 +73,7 @@ To invoke *deref* on a *TransactionReference* outside of a transaction:
 
 ## avout.locks
 
-The avout.locks namespace contains an implementation of java.util.concurrent.locks.Lock, called ZKDistributedReentrantLock, that provides a distributed lock.
+The avout.locks namespace contains an implementation of java.util.concurrent.locks.Lock, called ZKDistributedReentrantLock, and an implementation of java.util.concurrent.locks.ReadWriteLock, called ZKDistributedReentrantReadWriteLock.
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/locks.png" />
 
@@ -135,18 +136,16 @@ The macros when-lock-with-timeout and if-lock-with-timeout are also available.
 
 
 
-## Roadmap
-
-2. DistributedReentrantReadWriteLock
-3. DistributedLockingTransaction
-4. DistributedRef, an implementation of Clojure's IRef
-5. DisributedAtom
-6. DistributedPod
-
 ## References
 
-* ZooKeeper http://zookeeper.apache.org/
-* ZooKeeper: Wait-free coordination for Internet-scale systems http://www.usenix.org/event/atc10/tech/full_papers/Hunt.pdf
+* <a href="http://clojure.org/state">Clojure State</a>
+* <a href="http://clojure.org/refs">Clojure Refs and Transactions</a>
+* <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">Software Transactional Memory</a>
+* <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">Multiversion Concurrency Control</a>
+* <a href="http://en.wikipedia.org/wiki/Snapshot_isolation">Snapshot Isolation</a>
+* <a href="http://zookeeper.apache.org/">ZooKeeper</a>
+* <a href="http://www.usenix.org/event/atc10/tech/full_papers/Hunt.pdf">ZooKeeper: Wait-free coordination for Internet-scale systems</a>
+
 
 ## License
 
