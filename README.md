@@ -1,13 +1,13 @@
 # About Avout
 
-Avout is a Clojure library of distributed concurrency primitives (built on <a href="http://zookeeper.apache.org">ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>), including an extensible, distributed STM for managing the state of remote, heterogeneous resources with the same atomicity, consistency, and isolation that Clojure's STM provides when managing local state.
+Avout is a Clojure library of distributed concurrency primitives (built on <a href="http://zookeeper.apache.org">ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>), including an extensible, distributed STM for managing the state of remote, heterogeneous resources with the same atomicity, consistency, and isolation that <a href="http://clojure.org/refs">Clojure's STM</a> provides when <a href="http://clojure.org/state">managing local state</a>.
 
 
 ## avout.transaction
 
 ### Transaction Reference Protocols
 
-Transactions are system- and thread-local (as are Clojure's dosync transactions) but the transaction references (Refs) that participate may be distributed across multiple JVMs and/or systems. 
+Transactions are system- and thread-local (as are Clojure's dosync transactions) but the transaction references (Refs) that participate and processes that access them may be distributed across multiple JVMs and/or systems. 
 
 New types of Refs can be created by implementing the **TransactionReference** protocol.
 
