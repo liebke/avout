@@ -7,7 +7,7 @@ Avout is a Clojure library of distributed concurrency primitives, including an e
 
 ### Transaction Reference Protocols
 
-Transactions are system- and thread-local (as are Clojure's dosync transactions) but the transaction references (Refs) that participate may be distributed across multiple JVMs/systems. 
+Transactions are system- and thread-local (as are Clojure's dosync transactions) but the transaction references (Refs) that participate may be distributed across multiple JVMs and/or systems. 
 
 New types of Refs can be created by implementing the **TransactionReference** protocol.
 
@@ -16,7 +16,7 @@ New types of Refs can be created by implementing the **TransactionReference** pr
       (set [this value point] "Sets the transaction-value associated with the given clock point.")
       (get [this point] "Returns the value associated with given clock point."))
       
-The default TransactionReference implementation, ZKRef, uses the data fields of the reference's tval nodes to hold the values for the reference. Other implementations that access RESTful services, (No)SQL databases, or other data services can participate in transactions together.
+The default TransactionReference implementation, ZKRef, uses the ZooKeeper data fields of the reference's tval nodes (see ZooKeeper STM recipe below for details) to hold the values for the reference. Other implementations that access RESTful services, (No)SQL databases, or other data services can participate in transactions together.
 
 **Commute**, **Alter**, and **Ensure** are optional protocols to support common reference behaviors.
 
@@ -41,21 +41,15 @@ The following figure illustrates Clojure's standard MVCC transaction process.
 <img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
 
-## ZKRef
-
-ZKRef implements the clojure.lang.IRef interface and the TransactionReference, Commute, Alter, and Ensure protocols. ZKRef uses the data field of the reference's tval nodes to hold its values.
-
-
-
 ## ZooKeeper Recipe for MVCC Locking Transaction using Instances of TransactionReference
 
 Setting values in a transaction:
 
 1. Start a transaction by creating a persistent, sequential node **/stm/clock/t-** that represents the read-point for the transaction.
-2. Create a new **ZKDistributedReentrantReadWriteLock** (which is based on <a href="http://zookeeper.apache.org/doc/trunk/recipes.html#Shared+Locks">this recipe</a>) using **/ref-name/lock**, where ref-name is the value returned from the **TransactionReference** *name* method, as the lock-node, then acquire write-locks for each reference that will be altered during the transaction, and read-locks for those that will only be read (if any lock cannot be acquired or any other exception occurs during the remaining steps, end the transaction (and clean up) and then retry it (goto step 1) until success or RETRY_MAX is reached).
+2. Create a new **ZKDistributedReentrantReadWriteLock** (which is based on <a href="http://zookeeper.apache.org/doc/trunk/recipes.html#Shared+Locks">this recipe</a>) using **/ref-name/lock** as the lock-node, where ref-name is the value returned from the **TransactionReference** *name* method, then acquire write-locks for each reference that will be altered during the transaction, and read-locks for those that will only be read (if any lock cannot be acquired or any other exception occurs during the remaining steps, end the transaction (and clean up) and then retry it (goto step 1) until success or RETRY_MAX is reached).
 3. Find the most recent committed transaction-value node for each *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that the integer xxxxxxxxxx is less than, or equal to, the current read-point and **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists. 
 4. Make local copies of the current values for each *TransactionReference* at the latest committed point earlier than this transactions read-point by calling the *get* method on each *TransactionReference* passing the point extracted from the last committed transaction-value node.
-5. Apply the respective functions (passed in via *alter* and *commute* functions) to the current values for each *TransactionReference*, updating the local cache.
+5. Apply the respective functions (passed in via the *alter* and *commute* functions) to the current values for each *TransactionReference*, updating the local cache.
 6. Create a persistent, sequential node **stm/clock/t-** that represents the commit-point for this transaction.
 7. Call the *set* method for each *TransactionReference*, passing the new value and the commit-point extracted from the node created in the previous step.
 8. Once all the *TransactionReference* values have been updated, create a persistent node named **/stm/clock/t-xxxxxxxxxx/COMMITTED** to indicate that the transaction has been committed, and all references with tvals at t-xxxxxxxxxx are committed.
@@ -64,11 +58,15 @@ Setting values in a transaction:
 
 To invoke *deref* on a *TransactionReference* outside of a transaction: 
 
-1. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock**, where ref-name is the value returned from the **TransactionReference** *name* method, as the lock-node, then acquire a read-lock on the reference.
+1. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock** as the lock-node, where ref-name is the value returned from the **TransactionReference** *name* method, then acquire a read-lock on the reference.
 2. Find the most recent committed transaction-value node for the *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that the integer xxxxxxxxxx is less than, or equal to, the most recent clock tick, **/stm/clock/t-xxxxxxxxxx**, where **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists.
 3. Invoke the *get* method on the *TransactionReference*
 4. Release the read-lock
 
+
+## ZKRef
+
+ZKRef implements the clojure.lang.IRef interface and the TransactionReference, Commute, Alter, and Ensure protocols. ZKRef uses the data field of the reference's tval nodes to hold its values.
 
 
 ## avout.locks
