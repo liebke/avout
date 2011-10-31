@@ -12,8 +12,25 @@ The plan for the first implementations of Refs and Atoms (ZKDataRef and ZKDataAt
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
+
+    (defprotocol TransactionReference
+      (set [this value point] "Returns the ZKDistributedReentrantReadWriteLock associated with this reference.")
+      (get [this point] "Returns the value associated with given clock point.")
+      (getLock [this] "Returns the ZKDistributedReentrantReadWriteLock associated with this reference."))
+      
+    (defprotocol Commute
+      (commute [this f & args]))
+
+    (defprotocol Alter
+      (alter [this f & args]))
+
+    (defprotocol Ensure
+      (ensure [this]))
+
 <img src="https://github.com/liebke/avout/raw/master/docs/images/transref.png" />
 
+
+The ZKRef implements the clojure.lang.IRef interface and the TransactionReference, Commute, Alter, and Ensure protocols.
 
 
 ## avout.locks
