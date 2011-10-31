@@ -12,6 +12,34 @@ The plan for the first implementations of Refs and Atoms (ZKDataRef and ZKDataAt
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
+## ZooKeeper Recipe for MVCC STM using TransactionReference Instances
+
+To run a transaction:
+
+1. To start a transaction, create a persistent, sequential node **/stm/clock/t-** that represents the read-point for the transaction.
+2. Execute body of transaction, which will include calls to deref, ref-set, alter, commute, and ensure.
+3. Use *getLock* on each *TransactionReference* to acquire write-locks for each *TransactionReference* object that will be altered during the transaction, and read-locks for those that will only be read.
+4. Find the most recent committed transaction-value node for each *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that xxxxxxxxxx is less than, or equal to, the read-point and **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists. 
+5. Make local copies of the current values for each *TransactionReference* at the lastest committed point earlier than this transactions read-point by calling the *get* method on each *TransactionReference* passing the point extracted from the last committed transaction-value node.
+6. Apply the respective functions to the current values for each *TransactionReference*, updating the local cache.
+7. Create a persistent, sequential node **stm/clock/t-** that represents the commit-point for this transaction.
+8. Call the *set* method for each *TransactionReference*, passing the new value and the commit-point extracted from the node created in the previous step.
+9. Once all the *TransactionReference* values have been updated, create the persistent node **/tmp/clock/t-xxxxxxxxxx/COMMITTED** to indicate that the transaction has been committed, and all references with tvals at t-xxxxxxxxxx are committed.
+10. release the locks on all refs in transaction.
+
+
+To invoke *deref* on a *TransactionReference* outside of a transaction: 
+
+1. Use *getLock* on the *TransactionReference* to acquire its read-lock.
+2. Find the most recent committed transaction-value node for the *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that xxxxxxxxxx is less than, or equal to, the most recent clock tick, **/stm/clock/t-xxxxxxxxxx**, where **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists.
+3. Invoke the *get* method on the *TransactionReference*
+4. Release the read-lock
+
+
+
+### Transaction Protocols
+
+The following protocols can be used to create transaction references that can be used by avout.transaction.
 
     (defprotocol TransactionReference
       (set [this value point] "Returns the ZKDistributedReentrantReadWriteLock associated with this reference.")
@@ -30,7 +58,7 @@ The plan for the first implementations of Refs and Atoms (ZKDataRef and ZKDataAt
 <img src="https://github.com/liebke/avout/raw/master/docs/images/transref.png" />
 
 
-The ZKRef implements the clojure.lang.IRef interface and the TransactionReference, Commute, Alter, and Ensure protocols.
+ZKRef implements the clojure.lang.IRef interface and the TransactionReference, Commute, Alter, and Ensure protocols.
 
 
 ## avout.locks
