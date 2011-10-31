@@ -7,9 +7,20 @@ Currently, there is a distributed implementation of java.util.concurrent.locks.L
 The plan for the first implementations of Refs and Atoms (ZKDataRef and ZKDataAtom) will use the ZooKeeper znode's data field on the distributed-lock used for the transaction to hold the serialized Clojure form (method of serialization TBD), and provide a mechanism for distributing the value to all the participating clients. This first phase provides idiomatic Clojure access to ZooKeeper data fields, the next phase will generalize the distributed serialization mechanism so that other methods (that don't have a 1M data size limit) can be used, e.g direct peer-to-peer serialization, HDFS, and distributed data stores.
 
 
+## avout.transaction
+
+
+<img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
+
+<img src="https://github.com/liebke/avout/raw/master/docs/images/transref.png" />
+
+
+
 ## avout.locks
 
 The avout.locks namespace contains an implementation of java.util.concurrent.locks.Lock, called ZKDistributedReentrantLock, that provides a distributed lock.
+
+<img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stml.png" />
 
 ### Examples
 
