@@ -12,20 +12,19 @@ The plan for the first implementations of Refs and Atoms (ZKDataRef and ZKDataAt
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
-## ZooKeeper Recipe for MVCC STM using TransactionReference Instances
+## ZooKeeper Recipe for MVCC STM using Instances of TransactionReference
 
 To run a transaction:
 
-1. To start a transaction, create a persistent, sequential node **/stm/clock/t-** that represents the read-point for the transaction.
-2. Execute body of transaction, which will include calls to deref, ref-set, alter, commute, and ensure.
-3. Use *getLock* on each *TransactionReference* to acquire write-locks for each *TransactionReference* object that will be altered during the transaction, and read-locks for those that will only be read.
-4. Find the most recent committed transaction-value node for each *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that xxxxxxxxxx is less than, or equal to, the read-point and **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists. 
-5. Make local copies of the current values for each *TransactionReference* at the lastest committed point earlier than this transactions read-point by calling the *get* method on each *TransactionReference* passing the point extracted from the last committed transaction-value node.
-6. Apply the respective functions to the current values for each *TransactionReference*, updating the local cache.
-7. Create a persistent, sequential node **stm/clock/t-** that represents the commit-point for this transaction.
-8. Call the *set* method for each *TransactionReference*, passing the new value and the commit-point extracted from the node created in the previous step.
-9. Once all the *TransactionReference* values have been updated, create the persistent node **/tmp/clock/t-xxxxxxxxxx/COMMITTED** to indicate that the transaction has been committed, and all references with tvals at t-xxxxxxxxxx are committed.
-10. release the locks on all refs in transaction.
+1. Start a transaction by creating a persistent, sequential node **/stm/clock/t-** that represents the read-point for the transaction.
+2. Use *getLock* on each *TransactionReference* in the transaction to acquire write-locks for each instance that will be altered during the transaction, and read-locks for those that will only be read (if any lock cannot be acquired or any other exception occurs during the remaining steps, end the transaction (and clean up) and then retry it (goto step 1) until success or RETRY_MAX is reached).
+3. Find the most recent committed transaction-value node for each *TransactionReference* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that xxxxxxxxxx is less than, or equal to, the current read-point and **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists. 
+4. Make local copies of the current values for each *TransactionReference* at the latest committed point earlier than this transactions read-point by calling the *get* method on each *TransactionReference* passing the point extracted from the last committed transaction-value node.
+5. Apply the respective functions (passed in via *alter* and *commute* functions) to the current values for each *TransactionReference*, updating the local cache.
+6. Create a persistent, sequential node **stm/clock/t-** that represents the commit-point for this transaction.
+7. Call the *set* method for each *TransactionReference*, passing the new value and the commit-point extracted from the node created in the previous step.
+8. Once all the *TransactionReference* values have been updated, create a persistent node named **/tmp/clock/t-xxxxxxxxxx/COMMITTED** to indicate that the transaction has been committed, and all references with tvals at t-xxxxxxxxxx are committed.
+9. release the locks on all refs in the transaction.
 
 
 To invoke *deref* on a *TransactionReference* outside of a transaction: 
