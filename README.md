@@ -1,6 +1,6 @@
 # About Avout
 
-Avout is a Clojure library of distributed concurrency primitives, including an extensible, distributed STM for managing the state of remote, heterogeneous resources with the same atomicity, consistency, and isolation that Clojure's STM provides when managing local state.
+Avout is a Clojure library of distributed concurrency primitives (built on <a href="http://zookeeper.apache.org">ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>), including an extensible, distributed STM for managing the state of remote, heterogeneous resources with the same atomicity, consistency, and isolation that Clojure's STM provides when managing local state.
 
 
 ## avout.transaction
@@ -42,6 +42,8 @@ The following figure illustrates Clojure's standard MVCC transaction process.
 
 
 ## ZooKeeper Recipe for MVCC Locking Transaction using Instances of TransactionReference
+
+The Avout STM is built on <a href="http://zookeeper.apache.org">Apache ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>. The following is a recipe, in the style of <a href="http://zookeeper.apache.org/doc/trunk/recipes.html">Zookeeper Recipes and Solutions</a>, for building a distributed STM.
 
 Setting values in a transaction:
 
@@ -141,8 +143,9 @@ The macros when-lock-with-timeout and if-lock-with-timeout are also available.
 * <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">Software Transactional Memory</a>
 * <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">Multiversion Concurrency Control</a>
 * <a href="http://en.wikipedia.org/wiki/Snapshot_isolation">Snapshot Isolation</a>
-* <a href="http://zookeeper.apache.org/">ZooKeeper</a>
+* <a href="http://zookeeper.apache.org/">ZooKeeper Website</a>
 * <a href="http://www.usenix.org/event/atc10/tech/full_papers/Hunt.pdf">ZooKeeper: Wait-free coordination for Internet-scale systems</a>
+* <a href="http://zookeeper.apache.org/doc/trunk/recipes.html">ZooKeeper Recipes and Solutions</a>
 
 
 ## License
