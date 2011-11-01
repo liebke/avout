@@ -35,32 +35,71 @@ The following figure illustrates Clojure's standard MVCC transaction process.
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/ref-set.png" />
 
+<img src="https://github.com/liebke/avout/raw/master/docs/images/alter.png" />
+
 <img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
 
 ## ZooKeeper Recipe for MVCC Locking Transaction using Instances of ReferenceData
 
-The Avout STM is built on <a href="http://zookeeper.apache.org">Apache ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>. The following is a recipe, in the style of <a href="http://zookeeper.apache.org/doc/trunk/recipes.html">Zookeeper Recipes and Solutions</a>, for building a distributed STM.
+The Avout distributed STM is built on <a href="http://zookeeper.apache.org">Apache ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>. The following is a recipe, in the style of <a href="http://zookeeper.apache.org/doc/trunk/recipes.html">Zookeeper Recipes and Solutions</a>, for building a distributed STM modeled on Clojure's in-memory STM.
 
-Setting values in a transaction:
+### Performing ref-set in a transaction: (dosync (ref-set r v))
 
-1. Start a transaction by creating a persistent, sequential node **/stm/clock/t-** that represents the read-point for the transaction.
-2. Create a new **ZKDistributedReentrantReadWriteLock** (which is based on <a href="http://zookeeper.apache.org/doc/trunk/recipes.html#Shared+Locks">this recipe</a>) for each **ReferenceData** participating in the transaction using **/ref-name/lock** as the lock-node, where ref-name is the value returned from the **ReferenceData** *name* method; then acquire write-locks for each reference that will be altered during the transaction, and read-locks for those that will only be read. If any lock cannot be acquired or any other exception occurs during the remaining steps, end the transaction (and clean up) and then retry it (goto step 1) until success or RETRY_MAX is reached.
-3. Find the most recent committed transaction-value node for each *ReferenceData* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that the integer xxxxxxxxxx is less than, or equal to, the current read-point and **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists. 
-4. Make local copies of the current values for each *ReferenceData* at the latest committed point earlier than this transactions read-point by calling the *get* method on each *ReferenceData* passing the point extracted from the last committed transaction-value node.
-5. Apply the respective functions (passed in via the *alter* and *commute* functions) to the current values for each *ReferenceData*, updating the local cache.
-6. Create a persistent, sequential node **stm/clock/t-** that represents the commit-point for this transaction.
-7. Call the *set* method for each *ReferenceData*, passing the new value and the commit-point extracted from the node created in the previous step.
-8. Once all the *ReferenceData* values have been updated, create a persistent node named **/stm/clock/t-xxxxxxxxxx/COMMITTED** to indicate that the transaction has been committed, and all references with tvals at t-xxxxxxxxxx are committed.
-9. release the locks on all refs in the transaction.
+1. Start a transaction by creating a persistent, sequential node **/stm/history/t-** that represents the **start-point** for the transaction, and will act as the transaction's ID (**TXID**), setting it's data field to the value **RUNNING**. Record the current system time as **start-time**.
+
+2. For each reference participating in the transaction, create a new **ZKDistributedReentrantReadWriteLock** (which is based on <a href="http://zookeeper.apache.org/doc/trunk/recipes.html#Shared+Locks">this recipe</a>) using **/ref-name/lock** as the lock-node, where **ref-name** is the value returned from the **ReferenceData** **name** method; then acquire a write-lock for each reference. If any lock cannot be acquired, set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+
+3. Find the most recent committed transaction-value node for each reference by finding the node, **/ref-name/history/TXID-t-xxxxxxxxxx**, with the largest value of xxxxxxxxxx that is less than, or equal to, the current start-point and where the data field for **/stm/history/TXID** equals **COMMITTED**. If there is no point earlier than the start-point, then set the state of the transaction to RETRY by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+  * If the total number of history nodes, **N**, in the step above is greater than **MAX-HISTORY**, submit asynchronous delete requests for the earliest (**N** - **MAX_HISTORY**) nodes.
+
+4. Check if another transaction has tagged the reference by extracting the **TXID** value from the data field of **/ref-name**. If the value is not nil, determine if the other transaction is currently running by extracting its state from the data field of **/stm/history/TXID** and checking whether it's equal to either **RUNNING** or **COMMITTING**.
+  * If the reference is tagged by a running transaction, calculate the time elapsed since the **start-time** recorded in step 1. If the elapsed time is greater than **BARGE-WAIT-TIME**, and the current transaction's **start-point** is earlier than the other transaction's start-point
+    * then **barge** the other transaction by using **compare-and-set-data** (i.e. CAS) to set the data field of **/stm/history/OTHER-TXID** to **KILLED** if and only if its current state is **RUNNING**. If the CAS succeeded, tag the reference by setting the the data field of **/ref-name** to **TXID**, then unlock the write-lock on the reference. If the CAS failed, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+    * else if the barge could not be attempted, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+  
+5. Set the state of the transaction to **COMMITTING** by using **compare-and-set-data** (i.e. CAS) to set the data field of **/stm/history/TXID** to **COMMITTING** if and only if its current state is **RUNNING**.
+
+6. Acquire the distributed write-lock on the reference.
+
+7. Create a persistent, sequential node **/stm/history/t-** that represents the **commit-point** for this transaction.
+
+8. Validate the value.
+
+9. Call the **set** method for each **ReferenceData**, passing the new (validated) value and the **commit-point**.
+
+10. Notify watchers.
+
+11. Set the state of the transaction to **COMMITTED** by setting the data field of **/stm/history/TXID** to **COMMITTED**.
+
+12. release the write-lock on all refs in the transaction.
 
 
-To invoke *deref* on a *ReferenceData* outside of a transaction: 
+### Performing deref inside a transaction: (dosync (deref r)) or (dosync @r)
 
-1. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock** as the lock-node, where ref-name is the value returned from the **ReferenceData** *name* method, then acquire a read-lock on the reference.
-2. Find the most recent committed transaction-value node for the *ReferenceData* by finding the node **/ref-name/tvals/t-xxxxxxxxxx** such that the integer xxxxxxxxxx is less than, or equal to, the most recent clock tick, **/stm/clock/t-xxxxxxxxxx**, where **/stm/clock/t-xxxxxxxxxx/COMMITTED** exists.
-3. Invoke the *get* method on the *ReferenceData*
-4. Release the read-lock
+1. Start a transaction by creating a persistent, sequential node **/stm/history/t-** that represents the **start-point** for the transaction, and will act as the transaction's ID (**TXID**), setting it's data field to the value **RUNNING**. Record the current system time as **start-time**.
+
+2. For each reference participating in the transaction, create a new **ZKDistributedReentrantReadWriteLock** (which is based on <a href="http://zookeeper.apache.org/doc/trunk/recipes.html#Shared+Locks">this recipe</a>) using **/ref-name/lock** as the lock-node, where ref-name is the value returned from the **ReferenceData** *name* method; then acquire write-locks for the reference. If any lock cannot be acquired, set the state of the transaction to RETRY by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+
+3. Find the most recent committed transaction-value node for each reference by finding the node, **/ref-name/history/TXID-t-xxxxxxxxxx**, with the largest value of xxxxxxxxxx that is less than, or equal to, the current start-point and where the data field for **/stm/history/TXID** equals **COMMITTED**. If there is no point earlier than the start-point, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+  * If the total number of history nodes, **N**, in the step above is greater than **MAX-HISTORY**, submit asynchronous delete requests for the earliest (**N** - **MAX_HISTORY**) nodes.
+
+4. Set the state of the transaction to COMMITTING by using **compare-and-set-data** (i.e. CAS) to set the data field of **/stm/history/TXID** to **COMMITTING** if and only if its current state is **RUNNING**.
+
+5. Set the state of the transaction to COMMITTED by setting the data field of **/stm/history/TXID** to **COMMITTED**.
+
+6. Release read-lock on references.
+
+
+### Performing deref outside a transaction: (deref r) or @r
+
+1. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock** as the lock-node, where ref-name is the value returned from the **ReferenceData** **name** method, then acquire a read-lock on the reference.
+
+3. Find the most recent committed transaction-value point for each reference by finding the node, **/ref-name/history/TXID-t-xxxxxxxxxx**, with the largest value of xxxxxxxxxx where the data field for **/stm/history/TXID** equals **COMMITTED**. If there is no committed value, throw an exception.
+
+4. Invoke the *get* method on the *ReferenceData*, passing the value **t-xxxxxxxx** found in the previous step.
+
+5. Release the read-lock on all references.
 
 
 ## ZKRef
