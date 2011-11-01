@@ -16,7 +16,7 @@ New types of Refs can be created by implementing the **ReferenceData** protocol.
       (set [this value point] "Sets the transaction-value associated with the given clock point.")
       (get [this point] "Returns the value associated with given clock point."))
       
-The default ReferenceData implementation, ZKRef, uses the ZooKeeper data fields of the reference's tval nodes (see ZooKeeper STM recipe below for details) to hold the values for the reference. Other implementations that access RESTful services, (No)SQL databases, or other data services can participate in transactions together.
+The default ReferenceData implementation, ZKRef, uses the ZooKeeper data fields of the reference's history nodes (see ZooKeeper STM recipe below for details) to hold the values for the reference. Other implementations that access RESTful services, (No)SQL databases, or other data services can participate in transactions together.
 
 **TransactionReference** is a protocol that support common reference behaviors.
 
@@ -27,7 +27,7 @@ The default ReferenceData implementation, ZKRef, uses the ZooKeeper data fields 
       (ensure [this]))
 
 
-A ReferenceData holds all the values it has been set to over its lifetime, keyed by the commit-point, i.e. the clock tick of the transaction manager, when the value was set. Uncommitted values may exist in a ReferenceData. The transaction manager can be queried to determine if the commit-point associated with a given value in a ReferenceData was in fact committed.
+A *ReferenceData* holds a limited history of the values it has been set to over its lifetime, keyed by the commit-point, i.e. the clock tick of the transaction manager, when the value was set. Uncommitted values may exist in a *ReferenceData*. The transaction manager can be queried to determine if the commit-point associated with a given value in a *ReferenceData* was in fact committed.
 
 The following figure illustrates Clojure's standard MVCC transaction process.
 
@@ -46,12 +46,14 @@ The Avout distributed STM is built on <a href="http://zookeeper.apache.org">Apac
 
 ### Performing ref-set in a transaction: (dosync (ref-set r v))
 
+The following steps are performed repeatedly until **DONE** is set to true or until **RETRY_MAX** is exceeded.
+
 1. Start a transaction by creating a persistent, sequential node **/stm/history/t-** that represents the **start-point** for the transaction, and will act as the transaction's ID (**TXID**), setting it's data field to the value **RUNNING**. Record the current system time as **start-time**.
 
 2. For each reference participating in the transaction, create a new **ZKDistributedReentrantReadWriteLock** (which is based on <a href="http://zookeeper.apache.org/doc/trunk/recipes.html#Shared+Locks">this recipe</a>) using **/ref-name/lock** as the lock-node, where **ref-name** is the value returned from the **ReferenceData** **name** method; then acquire a write-lock for each reference. If any lock cannot be acquired, set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
 
-3. Find the most recent committed transaction-value node for each reference by finding the node, **/ref-name/history/TXID-t-xxxxxxxxxx**, with the largest value of xxxxxxxxxx that is less than, or equal to, the current start-point and where the data field for **/stm/history/TXID** equals **COMMITTED**. If there is no point earlier than the start-point, then set the state of the transaction to RETRY by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
-  * If the total number of history nodes, **N**, in the step above is greater than **MAX-HISTORY**, submit asynchronous delete requests for the earliest (**N** - **MAX_HISTORY**) nodes.
+3. Find the most recently committed history-node for each reference by finding the node, **/ref-name/history/TXID-t-xxxxxxxxxx**, with the largest value of xxxxxxxxxx that is less than, or equal to, the current start-point and where the data field for **/stm/history/TXID** equals **COMMITTED**. If there is no point earlier than the start-point, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+  * If the total number of history nodes, **N**, in the step above is greater than **MAX-HISTORY**, submit asynchronous delete requests for the earliest (**N** - **MAX_HISTORY**) nodes (ensure that the most recently committed history-node is not discarded because of a more recent uncommitted nodes).
 
 4. Check if another transaction has tagged the reference by extracting the **TXID** value from the data field of **/ref-name**. If the value is not nil, determine if the other transaction is currently running by extracting its state from the data field of **/stm/history/TXID** and checking whether it's equal to either **RUNNING** or **COMMITTING**.
   * If the reference is tagged by a running transaction, calculate the time elapsed since the **start-time** recorded in step 1. If the elapsed time is greater than **BARGE-WAIT-TIME**, and the current transaction's **start-point** is earlier than the other transaction's start-point
@@ -70,23 +72,25 @@ The Avout distributed STM is built on <a href="http://zookeeper.apache.org">Apac
 
 10. Notify watchers.
 
-11. Set the state of the transaction to **COMMITTED** by setting the data field of **/stm/history/TXID** to **COMMITTED**.
+11. Set **DONE** to true and the state of the transaction to **COMMITTED** by setting the data field of **/stm/history/TXID** to **COMMITTED**.
 
 12. release the write-lock on all refs in the transaction.
 
 
 ### Performing deref inside a transaction: (dosync (deref r)) or (dosync @r)
 
+The following steps are performed repeatedly until **DONE** is set to true or until **RETRY_MAX** is exceeded.
+
 1. Start a transaction by creating a persistent, sequential node **/stm/history/t-** that represents the **start-point** for the transaction, and will act as the transaction's ID (**TXID**), setting it's data field to the value **RUNNING**. Record the current system time as **start-time**.
 
-2. For each reference participating in the transaction, create a new **ZKDistributedReentrantReadWriteLock** (which is based on <a href="http://zookeeper.apache.org/doc/trunk/recipes.html#Shared+Locks">this recipe</a>) using **/ref-name/lock** as the lock-node, where ref-name is the value returned from the **ReferenceData** *name* method; then acquire write-locks for the reference. If any lock cannot be acquired, set the state of the transaction to RETRY by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+2. For each reference participating in the transaction, create a new **ZKDistributedReentrantReadWriteLock** (which is based on <a href="http://zookeeper.apache.org/doc/trunk/recipes.html#Shared+Locks">this recipe</a>) using **/ref-name/lock** as the lock-node, where ref-name is the value returned from the **ReferenceData** *name* method; then acquire write-locks for the reference. If any lock cannot be acquired, set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
 
-3. Find the most recent committed transaction-value node for each reference by finding the node, **/ref-name/history/TXID-t-xxxxxxxxxx**, with the largest value of xxxxxxxxxx that is less than, or equal to, the current start-point and where the data field for **/stm/history/TXID** equals **COMMITTED**. If there is no point earlier than the start-point, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
-  * If the total number of history nodes, **N**, in the step above is greater than **MAX-HISTORY**, submit asynchronous delete requests for the earliest (**N** - **MAX_HISTORY**) nodes.
+3. Find the most recently committed history-node for each reference by finding the node, **/ref-name/history/TXID-t-xxxxxxxxxx**, with the largest value of xxxxxxxxxx that is less than, or equal to, the current start-point and where the data field for **/stm/history/TXID** equals **COMMITTED**. If there is no point earlier than the start-point, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+  * If the total number of history nodes, **N**, in the step above is greater than **MAX-HISTORY**, submit asynchronous delete requests for the earliest (**N** - **MAX_HISTORY**) nodes (ensure that the most recently committed history-node is not discarded because of a more recent uncommitted nodes).
 
 4. Set the state of the transaction to COMMITTING by using **compare-and-set-data** (i.e. CAS) to set the data field of **/stm/history/TXID** to **COMMITTING** if and only if its current state is **RUNNING**.
 
-5. Set the state of the transaction to COMMITTED by setting the data field of **/stm/history/TXID** to **COMMITTED**.
+5. Set **DONE** to true and the state of the transaction to **COMMITTED** by setting the data field of **/stm/history/TXID** to **COMMITTED**.
 
 6. Release read-lock on references.
 
@@ -95,7 +99,7 @@ The Avout distributed STM is built on <a href="http://zookeeper.apache.org">Apac
 
 1. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock** as the lock-node, where ref-name is the value returned from the **ReferenceData** **name** method, then acquire a read-lock on the reference.
 
-3. Find the most recent committed transaction-value point for each reference by finding the node, **/ref-name/history/TXID-t-xxxxxxxxxx**, with the largest value of xxxxxxxxxx where the data field for **/stm/history/TXID** equals **COMMITTED**. If there is no committed value, throw an exception.
+3. Find the most recently committed history-node for each reference by finding the node, **/ref-name/history/TXID-t-xxxxxxxxxx**, with the largest value of xxxxxxxxxx where the data field for **/stm/history/TXID** equals **COMMITTED**. If there is no committed value, throw an exception.
 
 4. Invoke the *get* method on the *ReferenceData*, passing the value **t-xxxxxxxx** found in the previous step.
 
