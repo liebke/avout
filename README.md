@@ -18,25 +18,22 @@ New types of Refs can be created by implementing the **ReferenceData** protocol.
       
 The default ReferenceData implementation, ZKRef, uses the ZooKeeper data fields of the reference's tval nodes (see ZooKeeper STM recipe below for details) to hold the values for the reference. Other implementations that access RESTful services, (No)SQL databases, or other data services can participate in transactions together.
 
-**Commute**, **Alter**, and **Ensure** are optional protocols to support common reference behaviors.
+**TransactionReference** is a protocol that support common reference behaviors.
 
-    (defprotocol Commute
-      (commute [this f & args]))
-
-    (defprotocol Alter
-      (alter [this f & args]))
-
-    (defprotocol Ensure
+    (defprotocol TransactionReference
+      (ref-set [this value])
+      (commute [this f & args])
+      (alter [this f & args])
       (ensure [this]))
 
 
 A ReferenceData holds all the values it has been set to over its lifetime, keyed by the commit-point, i.e. the clock tick of the transaction manager, when the value was set. Uncommitted values may exist in a ReferenceData. The transaction manager can be queried to determine if the commit-point associated with a given value in a ReferenceData was in fact committed.
 
-<img src="https://github.com/liebke/avout/raw/master/docs/images/transref.png" />
-
-
 The following figure illustrates Clojure's standard MVCC transaction process.
 
+<img src="https://github.com/liebke/avout/raw/master/docs/images/deref.png" />
+
+<img src="https://github.com/liebke/avout/raw/master/docs/images/ref-set.png" />
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
