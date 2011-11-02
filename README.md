@@ -1,9 +1,51 @@
 # About Avout
 
-Avout is a Clojure library of distributed concurrency primitives (built on <a href="http://zookeeper.apache.org">ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>), including an extensible, distributed STM for managing the state of remote, heterogeneous resources with the same atomicity, consistency, and isolation that <a href="http://clojure.org/refs">Clojure's STM</a> provides when <a href="http://clojure.org/state">managing local state</a>.
+*Avout* is a Clojure library of distributed concurrency primitives (built on <a href="http://zookeeper.apache.org">ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>), including distributed implementations of *java.util.concurrent.lock.Lock*, *ReadWriteLock* and distributed versions of Clojure's *Atom* and *Ref*, the latter of which is built on an extensible, distributed *STM* for managing the state of remote, heterogeneous resources with the same **atomicity**, **consistency**, and **isolation** that <a href="http://clojure.org/refs">Clojure's STM</a> provides when <a href="http://clojure.org/state">managing local state</a>.
+
+## avout.atom design
+
+Atomic references depend on the ability to compare-and-swap (CAS) values, meaning only set the atom to a new value if it's current value is what I expect. Clojure's in-memory Atom uses a java.util.concurrent.atomic.AtomicReference to perform this function. 
+
+ZooKeeper provides a mechanism for conditionally updating a node's data field based on version numbers. To build a CAS function, which I'll call compare-and-set-data, use the following procedure:
+
+1. Call the data function on the node you want to update. This will return both its data value and a status map containing the current version number.
+
+2. Compare the data to its expected value, if they are different, you're done.
+
+3. If the current data value equals the expected value, then call set-data on the node with the new value and the node's current data version number. 
+  * If the data hasn't been updated since you requested it, the version will not have changed and the update will work. 
+  * If the data has been updated, the version number will have been automatically incremented, and the version number we provided won't match, so a KeeperException$BadVersionException exception will be thrown, catch it and call compare-and-set-data again, in case the updated data value is still equal to the expected-value.
+
+Here's the implementation of compare-and-set-data from the zookeeper-clj library:
+
+    (defn compare-and-set-data 
+      ([client node expected-value new-value]
+         (let [{:keys [data stat]} (data client node)
+               version (:version stat)]
+           (try
+             (when (Arrays/equals data expected-value)
+               (set-data client node new-value version))
+             (catch KeeperException$BadVersionException e
+               (compare-and-set-data client node expected-value new-value))))))
+	      
+
+If we abstract the **CAS** behavior with a protocol,
+
+    (defprotocol CAS
+      (compareAndSet [this expected-value new-value]))
+      
+we can swap out ZooKeeper as the atomic data holder (and swap out its 1M data size limit) with any other mechanism that supports the CAS semantics, while still using ZooKeeper for managing notifications of a distributed set of watchers.
+
+The ZooKeeper-backed **ZKAtom** implements the **CAS** protocol, the **clojure.lang.IDeref** interface, and the following **AtomReference** protocol.
+
+    (defprotocol AtomReference
+      (swap [this f])
+      (swap [this f & args]
+      (reset [this new-value]))
+      
 
 
-## avout.transaction
+## avout.transaction design
 
 ### Transaction Reference Protocols
 
