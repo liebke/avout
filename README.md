@@ -2,9 +2,9 @@
 
 *Avout* is a Clojure library of distributed concurrency primitives (built on <a href="http://zookeeper.apache.org">ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>), including distributed implementations of *java.util.concurrent.lock.Lock*, *ReadWriteLock* and distributed versions of Clojure's *Atom* and *Ref*, the latter of which is built on an extensible, distributed *STM* for managing the state of remote, heterogeneous resources with the same **atomicity**, **consistency**, and **isolation** that <a href="http://clojure.org/refs">Clojure's STM</a> provides when <a href="http://clojure.org/state">managing local state</a>.
 
-## avout.atom design
+## Design of avout.atom
 
-Atomic references depend on the ability to compare-and-swap (CAS) values, meaning only set the atom to a new value if it's current value is what I expect. Clojure's in-memory Atom uses a java.util.concurrent.atomic.AtomicReference to perform this function. 
+Atomic references depend on the ability to compare-and-swap (CAS) values, meaning only update the atom to a new value if it's current value is what I expect. Clojure's in-memory Atom uses a java.util.concurrent.atomic.AtomicReference to perform this function. 
 
 ZooKeeper provides a mechanism for conditionally updating a node's data field based on version numbers. To build a CAS function, which I'll call compare-and-set-data, use the following procedure:
 
@@ -14,7 +14,7 @@ ZooKeeper provides a mechanism for conditionally updating a node's data field ba
 
 3. If the current data value equals the expected value, then call set-data on the node with the new value and the node's current data version number. 
   * If the data hasn't been updated since you requested it, the version will not have changed and the update will work. 
-  * If the data has been updated, the version number will have been automatically incremented, and the version number we provided won't match, so a KeeperException$BadVersionException exception will be thrown, catch it and call compare-and-set-data again, in case the updated data value is still equal to the expected-value.
+  * If the data has been updated, the version number will have been automatically incremented, and the version number we provided won't match, so a KeeperException$BadVersionException will be thrown, catch it and call compare-and-set-data again, in case the updated data value is still equal to the expected-value.
 
 Here's the implementation of compare-and-set-data from the zookeeper-clj library:
 
@@ -60,7 +60,7 @@ To create a new type of atom backed by your favorite network-accessible, CAS-cap
 
 
 
-## avout.transaction design
+## Design of avout.transaction
 
 ### Transaction Reference Protocols
 
@@ -95,13 +95,18 @@ To create a new type of reference backed by your favorite network-accessible dat
       (alter [this f & args] ...)
       (ensure [this] ...))
 
+The following is an illustration of Ref values changing over time.
+
+<img src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time-1.png" />
+<img src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time-2.png" />
+<img src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time-3.png" />
 
 The following figure illustrates Clojure's standard MVCC transaction process.
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
 
-## ZooKeeper Recipe for Distributed MVCC STM
+## ZooKeeper Recipe for A Distributed MVCC STM
 
 The Avout distributed STM is built on <a href="http://zookeeper.apache.org">Apache ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>. The following is a recipe, in the style of <a href="http://zookeeper.apache.org/doc/trunk/recipes.html">Zookeeper Recipes and Solutions</a>, for building a distributed STM modeled on Clojure's in-memory STM.
 
@@ -109,7 +114,7 @@ The Avout distributed STM is built on <a href="http://zookeeper.apache.org">Apac
 <img src="https://github.com/liebke/avout/raw/master/docs/images/deref.png" />
 
 
-### Performing deref outside a transaction: (deref r) or @r
+### Performing deref Outside a Transaction: (deref r) or @r
 
 1. Create a new **ZKDistributedReentrantReadWriteLock** using **/ref-name/lock** as the lock-node, where ref-name is the value returned from the **ReferenceData** **name** method, then acquire a read-lock on the reference.
 
@@ -119,7 +124,7 @@ The Avout distributed STM is built on <a href="http://zookeeper.apache.org">Apac
 
 5. Release the read-lock on all references.
 
-### ZooKeeper Reads and Writes for deref outside transaction
+### ZooKeeper Reads and Writes for deref Outside Transaction
 
 1. (1 W) create /ref-name/lock/n- (one per ref in transaction)
 2. (1 R) children /ref-name/lock (one per ref in transaction)
@@ -130,7 +135,7 @@ The Avout distributed STM is built on <a href="http://zookeeper.apache.org">Apac
 7. (1 D) delete /ref-name/lock/n-xxxxxxxxxx
 
 
-### Performing deref inside a transaction: (dosync (deref r)) or (dosync @r)
+### Performing deref Inside a Transaction: (dosync (deref r)) or (dosync @r)
 
 The following steps are performed repeatedly until **DONE** is set to true or until **RETRY_MAX** is exceeded.
 
@@ -147,7 +152,7 @@ The following steps are performed repeatedly until **DONE** is set to true or un
 
 6. Release read-lock on references.
 
-### ZooKeeper reads and writes for deref inside transaction
+### ZooKeeper Reads and Writes for deref Inside Transaction
 
 1. (1 W) create /stm/history/t- with data (one per ref in transaction)
 2. (1 W) create /ref-name/lock/n- (one per ref in transaction)
@@ -197,7 +202,7 @@ The following steps are performed repeatedly until **DONE** is set to true or un
 13. release the write-lock on all refs in the transaction.
 
 
-### ZooKeeper reads and writes for ref-set
+### ZooKeeper Reads and Writes for ref-set
 
 1. (1 W) create /stm/history/t- with data (one per ref in transaction)
 2. (1 W) create /ref-name/lock/n- (one per ref in transaction)
