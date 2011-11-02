@@ -97,9 +97,7 @@ To create a new type of reference backed by your favorite network-accessible dat
 
 The following is an illustration of Ref values changing over time.
 
-<img src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time-1.png" />
-<img src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time-2.png" />
-<img src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time-3.png" />
+<img src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time.png" />
 
 The following figure illustrates Clojure's standard MVCC transaction process.
 
