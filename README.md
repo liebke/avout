@@ -52,6 +52,15 @@ The Avout distributed STM is built on <a href="http://zookeeper.apache.org">Apac
 
 5. Release the read-lock on all references.
 
+### ZooKeeper Reads and Writes for deref outside transaction
+
+1. (1 W) create /ref-name/lock/n- (one per ref in transaction)
+2. (1 R) children /ref-name/lock (one per ref in transaction)
+3. (1 R) children /ref-name/history (one per ref in transaction)
+4. (1+ R) data /stm/history/t-xxxxxxxxxx (may be multiple calls per reference)
+5. (1+ D) optionally delete old history nodes (should usually be one once a ref history > MAX_HISTORY)
+6. (1 R) get-data /ref-name/history/TXID-COMMIT-POINT
+7. (1 D) delete /ref-name/lock/n-xxxxxxxxxx
 
 
 ### Performing deref inside a transaction: (dosync (deref r)) or (dosync @r)
@@ -71,11 +80,22 @@ The following steps are performed repeatedly until **DONE** is set to true or un
 
 6. Release read-lock on references.
 
+### ZooKeeper reads and writes for deref inside transaction
+
+1. (1 W) create /stm/history/t- with data (one per ref in transaction)
+2. (1 W) create /ref-name/lock/n- (one per ref in transaction)
+3. (1 R) children /ref-name/lock (one per ref in transaction)
+4. (1 R) children /ref-name/history (one per ref in transaction)
+5. (1+ R) data /stm/history/t-xxxxxxxxxx (may be multiple calls per reference)
+6. (1+ D) optionally delete old history nodes (should usually be one once a ref history > MAX_HISTORY)
+7. (1 R, 1 W) compare-and-set-data /stm/history/TXID (two calls, data, set-data)
+8. (1 W) set-data /stm/history/TXID
+9. (1 D) delete /ref-name/lock/n-xxxxxxxxxx
 
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/ref-set.png" />
 
-### Performing ref-set in a transaction: (dosync (ref-set r v))
+### Performing ref-set: (dosync (ref-set r v))
 
 The following steps are performed repeatedly until **DONE** is set to true or until **RETRY_MAX** is exceeded.
 
@@ -90,22 +110,46 @@ The following steps are performed repeatedly until **DONE** is set to true or un
   * If the reference is tagged by a running transaction, calculate the time elapsed since the **start-time** recorded in step 1. If the elapsed time is greater than **BARGE-WAIT-TIME**, and the current transaction's **start-point** is earlier than the other transaction's start-point
     * then **barge** the other transaction by using **compare-and-set-data** (i.e. CAS) to set the data field of **/stm/history/OTHER-TXID** to **KILLED** if and only if its current state is **RUNNING**. If the CAS succeeded, tag the reference by setting the the data field of **/ref-name** to **TXID**, then unlock the write-lock on the reference. If the CAS failed, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
     * else if the barge could not be attempted, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
-  
-5. Set the state of the transaction to **COMMITTING** by using **compare-and-set-data** (i.e. CAS) to set the data field of **/stm/history/TXID** to **COMMITTING** if and only if its current state is **RUNNING**.
 
-6. Acquire the distributed write-lock on the reference.
+5. Release write-lock on references.
 
-7. Create a persistent, sequential node **/stm/history/t-** that represents the **commit-point** for this transaction.
+6. Set the state of the transaction to **COMMITTING** by using **compare-and-set-data** (i.e. CAS) to set the data field of **/stm/history/TXID** to **COMMITTING** if and only if its current state is **RUNNING**.
 
-8. Validate the value.
+7. Acquire the distributed write-lock on the reference.
 
-9. Call the **set** method for each **ReferenceData**, passing the new (validated) value and the **commit-point**.
+8. Create a persistent, sequential node **/stm/history/t-** that represents the **commit-point** for this transaction.
 
-10. Notify watchers.
+9. Validate the value.
 
-11. Set **DONE** to true and the state of the transaction to **COMMITTED** by setting the data field of **/stm/history/TXID** to **COMMITTED**.
+10. Call the **set** method for each **ReferenceData**, passing the new (validated) value and the **commit-point**.
 
-12. release the write-lock on all refs in the transaction.
+11. Notify watchers.
+
+12. Set **DONE** to true and the state of the transaction to **COMMITTED** by setting the data field of **/stm/history/TXID** to **COMMITTED**.
+
+13. release the write-lock on all refs in the transaction.
+
+
+### ZooKeeper reads and writes for ref-set
+
+1. (1 W) create /stm/history/t- with data (one per ref in transaction)
+2. (1 W) create /ref-name/lock/n- (one per ref in transaction)
+3. (1 R) children /ref-name/lock (one per ref in transaction)
+4. (1 R) children /ref-name/history (one per ref in transaction)
+5. (1+ R) data /stm/history/t-xxxxxxxxxx (may be multiple calls per reference)
+6. (1+ D) optionally delete old history nodes (should usually be one once a ref history > MAX_HISTORY)
+7. (1 R) data /ref-name
+8. (1 R) data /stm/history/OTHER-TXID
+9. (1 W) set-data /ref-name
+10. (1 D) delete /ref-name/lock/n-xxxxxxxxxx
+11. (1 R, 1 W) compare-and-set-data /stm/history/TXID (two calls, data, set-data)
+12. (1 W) create /ref-name/lock/n- (one per ref in transaction)
+13. (1 R) children /ref-name/lock (one per ref in transaction)
+14. (1 W) create /stm/history/t-
+15. (1 W) set-data /ref-name/history/TXID-COMMIT-POINT
+16. (1 W) set-data /stm/history/TXID
+17. (1 D) delete /ref-name/lock/n-xxxxxxxxxx
+
 
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/alter.png" />
