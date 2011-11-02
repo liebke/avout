@@ -29,20 +29,35 @@ Here's the implementation of compare-and-set-data from the zookeeper-clj library
                (compare-and-set-data client node expected-value new-value))))))
 	      
 
-If we abstract the **CAS** behavior with a protocol,
+If we abstract the CAS behavior into the following **AtomData** protocol,
 
-    (defprotocol CAS
+    (defprotocol AtomData
+      (name [this] "Returns the ZooKeeper node name associated with this AtomData.")
+      (get [this])
       (compareAndSet [this expected-value new-value]))
       
-we can swap out ZooKeeper as the atomic data holder (and swap out its 1M data size limit) with any other mechanism that supports the CAS semantics, while still using ZooKeeper for managing notifications of a distributed set of watchers.
+we can swap out ZooKeeper as the atomic data holder (and swap out its 1M data size limit) with any other mechanism that supports the CAS semantics and the **AtomData** protocol, while still using ZooKeeper for managing notifications of the distributed set of watchers.
 
-The ZooKeeper-backed **ZKAtom** implements the **CAS** protocol, the **clojure.lang.IDeref** interface, and the following **AtomReference** protocol.
+The ZooKeeper-backed **ZKAtom** implements the **AtomData** protocol, the **clojure.lang.IDeref** interface, and the following **AtomReference** protocol.
 
     (defprotocol AtomReference
       (swap [this f])
-      (swap [this f & args]
+      (swap [this f & args])
       (reset [this new-value]))
       
+To create a new type of atom backed by your favorite network-accessible, CAS-capable data store, implement the **AtomData** protocol, and pass an instance of it to **ZKAtomReference**, which like ZKAtom implements the **clojure.lang.IDeref** interface, the **AtomReference** protocol, and the **AtomData** protocol, but just delegates calls to **compareAndSet** and **get** to the passed-in instance of **AtomData**. **ZKAtomReference** is responsible for using ZooKeeper to notify watchers of changes to the atom, and providing implementations of deref, swap, and reset that use the passed-in **AtomData** instance to manage the value.
+
+    (deftype ZKAtomReference [client atomData]
+      AtomData
+      (compareAndSet [this expected-value new-value] (.compareAndSet atomData expected-value new-value))
+      (get [this] (.get atomData))
+      IDeref
+      (deref [this] (.get atomData))
+      AtomReference
+      (swap [this f] ...)
+      (swap [this f & args] ...)
+      (reset [this new-value] ...))
+
 
 
 ## avout.transaction design
@@ -70,6 +85,16 @@ The default ReferenceData implementation, ZKRef, uses the ZooKeeper data fields 
 
 
 A *ReferenceData* holds a limited history of the values it has been set to over its lifetime, keyed by the commit-point, i.e. the clock tick of the transaction manager, when the value was set. Uncommitted values may exist in a *ReferenceData*. The transaction manager can be queried to determine if the commit-point associated with a given value in a *ReferenceData* was in fact committed.
+
+To create a new type of reference backed by your favorite network-accessible data store, implement the **ReferenceData** protocol, and pass an instance of it to **ZKTransactionReference**, which is responsible for executing the transaction process using your implementation of **ReferenceData** as the data container for reference values.
+
+    (deftype ZKTransactionReference [client referenceData]
+      TransactionReference
+      (ref-set [this value] ...)
+      (commute [this f & args] ...)
+      (alter [this f & args] ...)
+      (ensure [this] ...))
+
 
 The following figure illustrates Clojure's standard MVCC transaction process.
 
