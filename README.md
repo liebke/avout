@@ -108,6 +108,26 @@ The following figure illustrates Clojure's standard MVCC transaction process.
 
 The Avout distributed STM is built on <a href="http://zookeeper.apache.org">Apache ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>. The following is a recipe, in the style of <a href="http://zookeeper.apache.org/doc/trunk/recipes.html">Zookeeper Recipes and Solutions</a>, for building a distributed STM modeled on Clojure's in-memory STM.
 
+The following ZooKeeper nodes are used by the STM.
+
+* **/stm/history/t-** (persistent, sequential), will be one for every tick of the STM clock upto MAX-STM-HISTORY, read-points are used as TXIDs.
+* **/ref-name/lock/n-** (ephemeral, sequential) used in the read-write lock protocol
+* **/ref-name/history/TXID-COMMIT_POINT** (persistent) will be upto MAX-HISTORY of these nodes
+* **/ref-name/txn/TXID** (ephemeral) will only be one at a time
+
+
+The following nodes will need to be created the first time the STM runs.
+
+* **/stm**
+* **/stm/history**
+
+The following nodes will need to be created for every new reference.
+
+* **/ref-name** (persistent)
+* **/ref-name/lock** (persistent)
+* **/ref-name/history** (persistent)
+* **/ref-name/txn** (persistent)
+
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/deref.png" />
 
@@ -176,10 +196,10 @@ The following steps are performed repeatedly until **DONE** is set to true or un
 3. Find the most recently committed history-node for each reference by finding the node, **/ref-name/history/TXID-t-xxxxxxxxxx**, with the largest value of xxxxxxxxxx that is less than, or equal to, the current start-point and where the data field for **/stm/history/TXID** equals **COMMITTED**. If there is no point earlier than the start-point, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
   * If the total number of history nodes, **N**, in the step above is greater than **MAX-HISTORY**, submit asynchronous delete requests for the earliest (**N** - **MAX_HISTORY**) nodes (ensure that the most recently committed history-node is not discarded because of a more recent uncommitted nodes).
 
-4. Check if another transaction has tagged the reference by extracting the **TXID** value from the data field of **/ref-name**. If the value is not nil, determine if the other transaction is currently running by extracting its state from the data field of **/stm/history/TXID** and checking whether it's equal to either **RUNNING** or **COMMITTING**.
+4. Check if another transaction has tagged the reference by listing the children of **/ref-name/txn**. If there is a child, use its name as a TXID to lookup its state by extracting the data field of **/stm/history/TXID** and checking whether it's equal to either **RUNNING** or **COMMITTING**, if so, the transaction is running.
   * If the reference is tagged by a running transaction, calculate the time elapsed since the **start-time** recorded in step 1. If the elapsed time is greater than **BARGE-WAIT-TIME**, and the current transaction's **start-point** is earlier than the other transaction's start-point
-    * then **barge** the other transaction by using **compare-and-set-data** (i.e. CAS) to set the data field of **/stm/history/OTHER-TXID** to **KILLED** if and only if its current state is **RUNNING**. If the CAS succeeded, tag the reference by setting the the data field of **/ref-name** to **TXID**, then unlock the write-lock on the reference. If the CAS failed, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
-    * else if the barge could not be attempted, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+  * then **barge** the other transaction by using **compare-and-set-data** (i.e. CAS) to set the data field of **/stm/history/OTHER-TXID** to **KILLED** if and only if its current state is **RUNNING**. If the CAS succeeded, tag the reference by deleting **/ref-name/txn/OTHER-TXID** and creating the ephemeral node **/ref-name/txn/TXID** (by making it ephemeral, the tag will be released if the connection to ZooKeeper is lost), then unlock the write-lock on the reference. If the CAS failed, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
+  * else if the barge could not be attempted, then set the state of the transaction to **RETRY** by setting the data field of **/stm/history/TXID** to the value **RETRY**, clean up, and then go back to step 1 until success or **RETRY_MAX** is reached.
 
 5. Release write-lock on references.
 
@@ -202,23 +222,24 @@ The following steps are performed repeatedly until **DONE** is set to true or un
 
 ### ZooKeeper Reads and Writes for ref-set
 
-1. (1 W) create /stm/history/t- with data (one per ref in transaction)
-2. (1 W) create /ref-name/lock/n- (one per ref in transaction)
-3. (1 R) children /ref-name/lock (one per ref in transaction)
-4. (1 R) children /ref-name/history (one per ref in transaction)
-5. (1+ R) data /stm/history/t-xxxxxxxxxx (may be multiple calls per reference)
-6. (1+ D) optionally delete old history nodes (should usually be one once a ref history > MAX_HISTORY)
-7. (1 R) data /ref-name
-8. (1 R) data /stm/history/OTHER-TXID
-9. (1 W) set-data /ref-name
-10. (1 D) delete /ref-name/lock/n-xxxxxxxxxx
-11. (1 R, 1 W) compare-and-set-data /stm/history/TXID (two calls, data, set-data)
-12. (1 W) create /ref-name/lock/n- (one per ref in transaction)
-13. (1 R) children /ref-name/lock (one per ref in transaction)
-14. (1 W) create /stm/history/t-
-15. (1 W) set-data /ref-name/history/TXID-COMMIT-POINT
-16. (1 W) set-data /stm/history/TXID
-17. (1 D) delete /ref-name/lock/n-xxxxxxxxxx
+1.  (1 W) create /stm/history/t- with data (one per ref in transaction)
+2.  (1 W) create /ref-name/lock/n- (one per ref in transaction)
+3.  (1 R) children /ref-name/lock (one per ref in transaction)
+4.  (1 R) children /ref-name/history (one per ref in transaction)
+5.  (1+ R) data /stm/history/t-xxxxxxxxxx (may be multiple calls per reference)
+6.  (1+ D) optionally delete old history nodes (should usually be one once a ref history > MAX_HISTORY)
+7.  (1 R) children /ref-name/txn
+8.  (1- R) data /stm/history/OTHER-TXID (may not exist)
+9.  (1- D) delete /ref-name/txn/OTHER-TXID (may not exist)
+10.  (1 W) create /ref-name/txn/TXID
+11. (1 D) delete /ref-name/lock/n-xxxxxxxxxx
+12. (1 R, 1 W) compare-and-set-data /stm/history/TXID (two calls, data, set-data)
+13. (1 W) create /ref-name/lock/n- (one per ref in transaction)
+14. (1 R) children /ref-name/lock (one per ref in transaction)
+15. (1 W) create /stm/history/t-
+16. (1 W) set-data /ref-name/history/TXID-COMMIT-POINT ;; for ZKRefs only
+17. (1 W) set-data /stm/history/TXID ;; for transaction state
+18. (1 D) delete /ref-name/lock/n-xxxxxxxxxx
 
 
 
