@@ -18,8 +18,31 @@
   (swap [this f] [this f args])
   (reset [this new-value]))
 
+(deftype ZKAtomReference [client atomData]
+  IDeref
+  (deref [this] (:value (.getVersionedValue atomData)))
+  AtomReference
+  (swap [this f] (.swap this f nil))
+  (swap [this f args]
+    (let [{:keys [value version]} (.getVersionedValue atomData)
+          new-value (apply f value args)]
+      (when (.compareAndSetValue atomData new-value version)
+        new-value)))
+  (reset [this new-value]
+    (when (.resetValue atomData new-value)
+      new-value)))
 
-;; ZK Atom
+;; Versions of Clojure's Atom functions for use with AtomReferences
+
+(defn !swap
+  "Cannot use standard swap! because Clojure expects a clojure.lang.Atom."
+  ([atom f & args] (.swap atom f args)))
+
+(defn !reset
+  "Cannot use standard reset! because Clojure expects a clojure.lang.Atom."
+  ([atom new-value] (.reset atom new-value)))
+
+;; Default implementation of AtomReference that uses ZooKeeper has the data value container.
 
 (defn serialize-form
   "Serializes a Clojure form to a byte-array."
@@ -44,20 +67,6 @@
         (compareAndSetValue this new-value current-version))))
   (resetValue [this new-value] (zk/set-data client name (serialize-form new-value) -1)))
 
-(deftype ZKAtomReference [client atomData]
-  IDeref
-  (deref [this] (:value (.getVersionedValue atomData)))
-  AtomReference
-  (swap [this f] (.swap this f nil))
-  (swap [this f args]
-    (let [{:keys [value version]} (.getVersionedValue atomData)
-          new-value (apply f value args)]
-      (when (.compareAndSetValue atomData new-value version)
-        new-value)))
-  (reset [this new-value]
-    (when (.resetValue atomData new-value)
-      new-value)))
-
 (defn zk-atom
   ([client name]
      (zk-atom client name nil))
@@ -66,10 +75,3 @@
      (doto (ZKAtomReference. client (ZKAtomData. client name))
        (.reset init-value))))
 
-(defn !swap
-  "Cannot use standard swap! because Clojure expects a clojure.lang.Atom."
-  ([atom f & args] (.swap atom f args)))
-
-(defn !reset
-  "Cannot use standard reset! because Clojure expects a clojure.lang.Atom."
-  ([atom new-value] (.reset atom new-value)))
