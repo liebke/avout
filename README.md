@@ -60,11 +60,11 @@ To create a new type of atom backed by your favorite network-accessible, CAS-cap
 
 
 
-## Design of avout.transaction
+## Design of avout.ref
 
 ### Transaction Reference Protocols
 
-Transactions are system- and thread-local (as are Clojure's dosync transactions) but the transaction references (Refs) that participate and processes that access them may be distributed across multiple JVMs and/or systems. 
+Transactions support synchronous change to multiple References. Transactions are system- and thread-local (as are Clojure's dosync transactions) but the transaction references (Refs) that participate and processes that access them may be distributed across multiple JVMs and/or systems. 
 
 New types of Refs can be created by implementing the **ReferenceData** protocol.
 
