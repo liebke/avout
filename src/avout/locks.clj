@@ -270,9 +270,10 @@
 "
   ([client & {:keys [lock-node request-id]
               :or {lock-node "/lock"}}]
-     (ZKDistributedReentrantLock. client lock-node
-                                  (doto (ThreadLocal.) (.set request-id))
-                                  (ReentrantLock. true))))
+     (when-let [lock-path (zk/create-all client lock-node :persistent? true)]
+       (ZKDistributedReentrantLock. client lock-node
+                                    (doto (ThreadLocal.) (.set request-id))
+                                    (ReentrantLock. true)))))
 
 
 
@@ -292,43 +293,34 @@
   Lock ;; methods for the java.util.concurrent.locks.Lock interface
 
   (lock [this]
-    (cond
-      (= (zk/state client) :CLOSED)
-        (throw (RuntimeException. "ZooKeeper session is closed, invalidating this lock object"))
-      (> (.getReadHoldCount localLock) 0) ;; checking for reentrancy
-        (.lock (.readLock localLock)) ;; if so, lock the local reentrant-lock again, but don't create a new distributed lock request
-      :else
-        (let [lock (ReentrantLock. true)
-              lock-event (.newCondition lock)
-              watcher #(with-lock lock (.signal lock-event))]
-          (with-lock lock
-            (.set requestId (str "read-" (.toString (UUID/randomUUID))))
-            (mli/submit-read-lock-request client lockNode (.get requestId) watcher)
-            (.await lock-event)
-            (.lock (.readLock localLock))))))
+    (if (= (zk/state client) :CLOSED)
+      (throw (RuntimeException. "ZooKeeper session is closed, invalidating this lock object"))
+      (let [lock (ReentrantLock. true)
+            lock-event (.newCondition lock)
+            watcher #(with-lock lock (.signal lock-event))]
+        (with-lock lock
+          (.set requestId (str "read-" (.toString (UUID/randomUUID))))
+          (mli/submit-read-lock-request client lockNode (.get requestId) watcher)
+          (.await lock-event)
+          (.lock localLock)))))
 
   (unlock [this]
     (try
-      (when (= (.getReadHoldCount localLock) 1)
-        (mli/delete-lock-request-node client lockNode (.get requestId)))
-      (finally (.unlock (.readLock localLock)))))
+      (mli/delete-lock-request-node client lockNode (.get requestId))
+      (finally (.unlock localLock))))
 
   (tryLock [this]
-    (cond
-      (= (zk/state client) :CLOSED)
-        (throw (RuntimeException. "ZooKeeper session is closed, invalidating this lock object"))
-      (> (.getReadHoldCount localLock) 0) ;; checking for reentrancy
-        (.tryLock (.readLock localLock)) ;; if so, lock the local reentrant-lock again, but don't create a new distributed lock request
-      :else
-        (if (.tryLock (.readLock localLock))
-          (do (.set requestId (str "read-" (.toString (UUID/randomUUID))))
-              (mli/submit-read-lock-request client lockNode (.get requestId) nil)
-              (.sync client lockNode nil nil)
-              (if (.hasLock this)
-                true
-                (do (mli/delete-lock-request-node client lockNode (.get requestId))
-                    false)))
-          false)))
+    (if (= (zk/state client) :CLOSED)
+      (throw (RuntimeException. "ZooKeeper session is closed, invalidating this lock object"))
+      (if (.tryLock localLock)
+        (do (.set requestId (str "read-" (.toString (UUID/randomUUID))))
+            (mli/submit-read-lock-request client lockNode (.get requestId) nil)
+            (.sync client lockNode nil nil)
+            (if (.hasLock this)
+              true
+              (do (mli/delete-lock-request-node client lockNode (.get requestId))
+                  false)))
+        false)))
 
   (tryLock [this time unit]
     (cond
@@ -336,13 +328,11 @@
         (throw (RuntimeException. "ZooKeeper session is closed, invalidating this lock object"))
       (Thread/interrupted)
         (throw (InterruptedException.))
-      (> (.getReadHoldCount localLock) 0) ;; checking for reentrancy
-        (.tryLock (.readLock localLock) time unit) ;; lock the local reentrant-lock again, but don't create a new distributed lock request
       :else
         (let [lock (ReentrantLock. true)
               lock-event (.newCondition lock)
               start-time (System/nanoTime)]
-          (if (.tryLock (.readLock localLock) time unit)
+          (if (.tryLock localLock time unit)
             (let [time-left (- (.toNanos unit time) (- (System/nanoTime) start-time))
                   watcher #(when-lock-with-timeout lock time-left (TimeUnit/NANOSECONDS) (.signal lock-event))]
               (.set requestId (str "read-" (.toString (UUID/randomUUID))))
@@ -385,28 +375,22 @@
 
   (hasLock [this]
     (and (not= (zk/state client) :CLOSED)
-         (.isWriteLockedByCurrentThread localLock)
-         (= (.requestNode this) (.getOwner this))))
-
-
-  DistributedReentrantLock ;; methods for the DistributedReentrantLock protocol
-
-  (getHoldCount [this]
-    (.getReadHoldCount localLock)))
+         (= (.requestNode this) (.getOwner this)))))
 
 
 (defn distributed-read-write-lock
   ([client & {:keys [lock-node request-id]
               :or {lock-node "/read-write-lock"}}]
-     (let [read-write-lock (ReentrantReadWriteLock. true)]
-       (ZKDistributedReentrantReadWriteLock.
+     (when-let [lock-path (zk/create-all client lock-node :persistent? true)]
+       (let [read-write-lock (ReentrantReadWriteLock. true)]
+        (ZKDistributedReentrantReadWriteLock.
          (ZKDistributedReentrantReadLock.
-           client lock-node
-           (doto (ThreadLocal.) (.set (str "read-"  request-id)))
-           read-write-lock)
+          client lock-node
+          (doto (ThreadLocal.) (.set (str "read-"  request-id)))
+          (.readLock read-write-lock))
          (ZKDistributedReentrantLock.
-           client lock-node
-           (doto (ThreadLocal.) (.set (str "write-" request-id)))
-           read-write-lock)
-         read-write-lock))))
+          client lock-node
+          (doto (ThreadLocal.) (.set (str "write-" request-id)))
+          (.writeLock read-write-lock))
+         read-write-lock)))))
 
