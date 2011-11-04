@@ -9,52 +9,56 @@
 
 (defprotocol AtomData
   (nodeName [this] "Returns the ZooKeeper node name associated with this AtomData.")
-  (getVersionedValue [this] "Returns a map containing the :value and a :version
+  (getValue [this] "Returns a map containing the :value and a :version
     which may just be the current value or a version number and is used in
     compareAndSet to determine if an update should occur.")
-  (compareAndSetValue [this new-value expected-version])
-  (resetValue [this new-value]))
+  (setValue [this value]))
 
 (defprotocol AtomReference
   (swap [this f] [this f args])
   (reset [this new-value])
   (compareAndSet [this old-value new-value]))
 
-(deftype ZKAtomReference [client atomData lock]
+(deftype ZKAtomReference [client atomData validator watch lock]
 
   AtomReference
   (swap [this f] (.swap this f nil))
 
   (compareAndSet [this old-value new-value]
-    (locks/with-lock (.writeLock lock)
-      (let [{:keys [value version]} (.getVersionedValue atomData)]
-        (and (= old-value value)
-             (.compareAndSetValue atomData new-value version)))))
+    (if (and @validator (not (@validator new-value)))
+      (throw (IllegalStateException. "Invalid reference state"))
+      (locks/with-lock (.writeLock lock)
+        (let [value (.getValue atomData)]
+          (and (= old-value value)
+               (.setValue atomData new-value))))))
 
   (swap [this f args]
     (locks/with-lock (.writeLock lock)
-      (let [{:keys [value version]} (.getVersionedValue atomData)
-            new-value (apply f value args)]
-        (when (.compareAndSetValue atomData new-value version)
-          new-value))))
+      (let [new-value (apply f (.getValue atomData) args)]
+        (if (and @validator (not (@validator new-value)))
+          (throw (IllegalStateException. "Invalid reference state"))
+          (do (.setValue atomData new-value)
+              new-value)))))
 
   (reset [this new-value]
     (locks/with-lock (.writeLock lock)
-      (when (.resetValue atomData new-value)
-        new-value)))
+      (if (and @validator (not (@validator new-value)))
+        (throw (IllegalStateException. "Invalid reference state"))
+        (do (.setValue atomData new-value)
+            new-value))))
 
   IRef
   (deref [this]
     (locks/with-lock (.readLock lock)
-      (:value (.getVersionedValue atomData))))
+      (.getValue atomData)))
 
   (addWatch [this key callback] ;; callback params: akey, aref, old-val, new-val, but old-val will be nil
     (let [watcher (fn watcher-fn [event]
                     (when (= :NodeDataChanged (:event-type event))
                       (let [new-value (.deref this)]
                         (callback key this nil new-value)))
-                    (zk/exists client (.name atomData) :watcher watcher-fn))]
-      (zk/exists client (.name atomData) :watcher watcher)
+                    (zk/exists client (.nodeName atomData) :watcher watcher-fn))]
+      (zk/exists client (.nodeName atomData) :watcher watcher)
       this))
 
   (getWatches [this] (throw (UnsupportedOperationException.)))
@@ -62,9 +66,9 @@
   (removeWatch [this key] (throw (UnsupportedOperationException.)))
 
   ;;throw new IllegalStateException("Invalid reference state");
-  (setValidator [this f] (throw (UnsupportedOperationException.)))
+  (setValidator [this f] (reset! validator f))
 
-  (getValidator [this] (throw (UnsupportedOperationException.))))
+  (getValidator [this] @validator))
 
 ;; Versions of Clojure's Atom functions for use with AtomReferences
 
@@ -92,22 +96,15 @@
   ([form]
      (read-string (data/to-string form))))
 
-
 (deftype ZKAtomData [client name]
   AtomData
   (nodeName [this] name)
 
-  (getVersionedValue [this]
+  (getValue [this]
     (let [{:keys [data stat]} (zk/data client name)]
-      {:value (deserialize-form data), :version (:version stat)}))
+      (deserialize-form data)))
 
-  (compareAndSetValue [this new-value current-version]
-    (try
-      (zk/set-data client name (serialize-form new-value) current-version)
-      (catch KeeperException$BadVersionException e
-        (compareAndSetValue this new-value current-version))))
-
-  (resetValue [this new-value] (zk/set-data client name (serialize-form new-value) -1)))
+  (setValue [this new-value] (zk/set-data client name (serialize-form new-value) -1)))
 
 (defn zk-atom
   ([client name]
@@ -115,6 +112,7 @@
   ([client name init-value]
      (zk/create client name :persistent? true)
      (doto (ZKAtomReference. client (ZKAtomData. client name)
+                             (atom nil) (atom {})
                              (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
        (.reset init-value))))
 
