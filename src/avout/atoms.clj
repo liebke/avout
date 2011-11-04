@@ -67,6 +67,11 @@
 
   (getValidator [this] @validator))
 
+(defn distributed-atom [client name atom-data & {:keys [validator]}]
+  (DistributedAtom. client name atom-data
+                    (atom validator) (atom {})
+                    (locks/distributed-read-write-lock client :lock-node (str name "/lock"))))
+
 ;; Versions of Clojure's Atom functions for use with AtomReferences
 
 (defn swap!!
@@ -102,12 +107,10 @@
   (setValue [this new-value] (zk/set-data client name (serialize-form new-value) -1)))
 
 (defn zk-atom
-  ([client name]
-     (zk-atom client name nil))
   ([client name init-value]
+     (doto (zk-atom client name)
+       (.reset init-value)))
+  ([client name]
      (zk/create client name :persistent? true)
-     (doto (DistributedAtom. client name (ZKAtomData. client name)
-                             (atom nil) (atom {})
-                             (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
-       (.reset init-value))))
+     (distributed-atom client name (ZKAtomData. client name))))
 
