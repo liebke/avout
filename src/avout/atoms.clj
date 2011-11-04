@@ -36,6 +36,7 @@
         (if (and @validator (not (@validator new-value)))
           (throw (IllegalStateException. "Invalid reference state"))
           (do (.setValue atomData new-value)
+              (zk/set-data client nodeName (data/to-bytes 0) -1) ;; trigger watchers
               new-value)))))
 
   (reset [this new-value]
@@ -43,6 +44,7 @@
       (if (and @validator (not (@validator new-value)))
         (throw (IllegalStateException. "Invalid reference state"))
         (do (.setValue atomData new-value)
+            (zk/set-data client nodeName (data/to-bytes 0) -1) ;; trigger watchers
             new-value))))
 
   IRef
@@ -68,6 +70,7 @@
   (getValidator [this] @validator))
 
 (defn distributed-atom [client name atom-data & {:keys [validator]}]
+  (zk/create client name :persistent? true)
   (DistributedAtom. client name atom-data
                     (atom validator) (atom {})
                     (locks/distributed-read-write-lock client :lock-node (str name "/lock"))))
@@ -111,6 +114,5 @@
      (doto (zk-atom client name)
        (.reset init-value)))
   ([client name]
-     (zk/create client name :persistent? true)
      (distributed-atom client name (ZKAtomData. client name))))
 

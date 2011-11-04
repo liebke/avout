@@ -16,8 +16,9 @@
         (mongo/update! :atoms data (assoc data :value new-value))))))
 
 (defn mongo-atom
-  ([zk-client mongo-conn name init-value]
+  ([zk-client mongo-conn name init-value & {:keys [validator]}]
      (doto (mongo-atom zk-client mongo-conn name)
+       (set-validator! validator)
        (.reset init-value)))
   ([zk-client mongo-conn name]
      (mongo/with-mongo mongo-conn
@@ -27,20 +28,28 @@
 
 ;; example usage
 (comment
-(use 'avout-demo.demo :reload-all)
-(require '[somnium.congomongo :as mongo])
-(require '[zookeeper :as zk])
-(use 'avout.atoms)
-(def zk-client (zk/connect "127.0.0.1"))
-(def mongo-conn (mongo/make-connection "mydb"
-                                 :host "127.0.0.1"
-                                 :port 27017))
+  (use 'avout.atoms)
+  (use 'avout-mongo.atom :reload-all)
+  (require '[somnium.congomongo :as mongo])
+  (require '[zookeeper :as zk])
 
-(def matom (mongo-atom zk-client mongo-conn "/matom"))
-@matom
-(swap!! matom assoc :c 3)
-@matom
-(swap!! matom update-in [:a] inc)
-@matom
+  (def zk-client (zk/connect "127.0.0.1"))
+  (def mongo-conn (mongo/make-connection "mydb" :host "127.0.0.1" :port 27017))
+
+  (def matom0 (mongo-atom zk-client mongo-conn "/matom" {:a 1}))
+  @matom0
+  (swap!! matom0 assoc :c 3)
+  @matom0
+  (swap!! matom0 update-in [:a] inc)
+  @matom0
+
+  (def matom1 (mongo-atom zk-client mongo-conn "/matom1" 1 :validator #(> % 0)))
+  (add-watch matom1 :matom1 (fn [key ref old-val new-val]
+                              (println key ref old-val new-val)))
+  @matom1
+  (swap!! matom1 inc)
+  @matom1
+  (swap!! matom1 - 2)
+  @matom1
 
 )
