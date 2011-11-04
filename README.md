@@ -29,26 +29,25 @@ Here's the implementation of compare-and-set-data from the zookeeper-clj library
                (compare-and-set-data client node expected-value new-value))))))
 	      
 
-If we abstract the CAS behavior into the following **AtomData** protocol,
+If we abstract the CAS behavior into the following **AtomState** protocol,
 
-    (defprotocol AtomData
-      (nodeName [this] "Returns the ZooKeeper node name associated with this AtomData.")
+    (defprotocol AtomState
       (getValue [this])
       (setValue [this value]))
       
-we can swap out ZooKeeper as the atomic data holder (and swap out its 1M data size limit) with any other mechanism that supports the CAS semantics and the **AtomData** protocol, while still using ZooKeeper for managing notifications of the distributed set of watchers.
+we can swap out ZooKeeper as the atomic data holder (and swap out its 1M data size limit) with any other mechanism that supports the CAS semantics and the **AtomState** protocol, while still using ZooKeeper for managing notifications of the distributed set of watchers.
 
-The ZooKeeper-backed **ZKAtom** implements the **AtomData** protocol, the **clojure.lang.IDeref** interface, and the following **AtomReference** protocol.
+The ZooKeeper-backed **ZKAtom** implements the **AtomState** protocol, the **clojure.lang.IDeref** interface, and the following **AtomReference** protocol.
 
     (defprotocol AtomReference
       (swap [this f])
       (swap [this f & args])
       (reset [this new-value]))
       
-To create a new type of atom backed by your favorite network-accessible, CAS-capable data store, implement the **AtomData** protocol, and pass an instance of it to **DistributedAtom**, which like ZKAtom implements the **clojure.lang.IDeref** interface, the **AtomReference** protocol, and the **AtomData** protocol, but just delegates calls to **compareAndSet** and **get** to the passed-in instance of **AtomData**. **DistributedAtom** is responsible for using ZooKeeper to notify watchers of changes to the atom, and providing implementations of deref, swap, and reset that use the passed-in **AtomData** instance to manage the value.
+To create a new type of atom backed by your favorite network-accessible, CAS-capable data store, implement the **AtomState** protocol, and pass an instance of it to **DistributedAtom**, which like ZKAtom implements the **clojure.lang.IDeref** interface, the **AtomReference** protocol, and the **AtomState** protocol, but just delegates calls to **compareAndSet** and **get** to the passed-in instance of **AtomState**. **DistributedAtom** is responsible for using ZooKeeper to notify watchers of changes to the atom, and providing implementations of deref, swap, and reset that use the passed-in **AtomState** instance to manage the value.
 
     (deftype DistributedAtom [client atomData]
-      AtomData
+      AtomState
       (compareAndSet [this expected-value new-value] (.compareAndSet atomData expected-value new-value))
       (get [this] (.get atomData))
       IDeref

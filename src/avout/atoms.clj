@@ -2,9 +2,9 @@
   (:require [zookeeper :as zk]
             [zookeeper.data :as data]
             [avout.locks :as locks])
-  (:import (org.apache.zookeeper KeeperException$BadVersionException)
-           (clojure.lang IRef)))
+  (:import (clojure.lang IRef)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; PROTOCOLS
 
 (defprotocol AtomState
@@ -18,13 +18,14 @@
   (reset [this new-value])
   (compareAndSet [this old-value new-value]))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; DistributedAtom implementation
 
 (defn trigger-watchers
   [client node-name]
   (zk/set-data client node-name (data/to-bytes 0) -1))
 
-(deftype DistributedAtom [client nodeName atomData validator watch lock]
+(deftype DistributedAtom [client nodeName atomData validator watches lock]
   AtomReference
   (compareAndSet [this old-value new-value]
     (if (and @validator (not (@validator new-value)))
@@ -59,16 +60,18 @@
 
   (addWatch [this key callback] ;; callback params: akey, aref, old-val, new-val, but old-val will be nil
     (let [watcher (fn watcher-fn [event]
-                    (when (= :NodeDataChanged (:event-type event))
-                      (let [new-value (.deref this)]
-                        (callback key this nil new-value)))
-                    (zk/exists client nodeName :watcher watcher-fn))]
+                    (when (contains? @watches key)
+                      (when (= :NodeDataChanged (:event-type event))
+                       (let [new-value (.deref this)]
+                         (callback key this nil new-value)))
+                      (zk/exists client nodeName :watcher watcher-fn)))]
+      (swap! watches assoc key watcher)
       (zk/exists client nodeName :watcher watcher)
       this))
 
-  (getWatches [this] (throw (UnsupportedOperationException.)))
+  (getWatches [this] @watches)
 
-  (removeWatch [this key] (throw (UnsupportedOperationException.)))
+  (removeWatch [this key] (swap! watches (dissoc key)) this)
 
   (setValidator [this f] (reset! validator f))
 
@@ -80,6 +83,7 @@
                     (atom validator) (atom {})
                     (locks/distributed-read-write-lock client :lock-node (str name "/lock"))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Versions of Clojure's Atom functions for use with AtomReferences
 
 (defn swap!!
@@ -122,14 +126,15 @@
   ([client name]
      (distributed-atom client name (ZKAtomState. client (zk/create-all client (str name "/data"))))))
 
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Usage examples
 (comment
 
   (use 'avout.atoms :reload-all)
   (require '[zookeeper :as zk])
 
   (def client (zk/connect "127.0.0.1"))
-  (def a0 (zk-atom client "/a1") 0)
+  (def a0 (zk-atom client "/a1" 0))
   @a0
   (swap!! a0 inc)
   @a0
@@ -140,7 +145,13 @@
   (swap!! a1 update-in [:a] inc)
 
   ;; check that reads are not blocked by writes
-  (swap!! a1 (fn [v] (Thread/sleep 5000) (update-in % [:a] inc)))
+  (future (swap!! a1 (fn [v] (Thread/sleep 5000) (update-in v [:a] inc))))
   @a1
+
+  ;; test watches
+  (add-watch a1 :a1 (fn [akey aref old-val new-val] (println akey aref old-val new-val)))
+  (swap!! a1 update-in [:a] inc)
+  (swap!! a1 update-in [:a] inc)
+  (remove-watch a1 :a1)
 
   )
