@@ -1,4 +1,4 @@
-(ns avout.atom
+(ns avout.atoms
   (:require [zookeeper :as zk]
             [zookeeper.data :as data]
             [avout.locks :as locks])
@@ -8,7 +8,6 @@
 ;; PROTOCOLS
 
 (defprotocol AtomData
-  (nodeName [this] "Returns the ZooKeeper node name associated with this AtomData.")
   (getValue [this] "Returns a map containing the :value and a :version
     which may just be the current value or a version number and is used in
     compareAndSet to determine if an update should occur.")
@@ -19,11 +18,8 @@
   (reset [this new-value])
   (compareAndSet [this old-value new-value]))
 
-(deftype ZKAtomReference [client atomData validator watch lock]
-
+(deftype DistributedAtom [client nodeName atomData validator watch lock]
   AtomReference
-  (swap [this f] (.swap this f nil))
-
   (compareAndSet [this old-value new-value]
     (if (and @validator (not (@validator new-value)))
       (throw (IllegalStateException. "Invalid reference state"))
@@ -31,6 +27,8 @@
         (let [value (.getValue atomData)]
           (and (= old-value value)
                (.setValue atomData new-value))))))
+
+  (swap [this f] (.swap this f nil))
 
   (swap [this f args]
     (locks/with-lock (.writeLock lock)
@@ -57,15 +55,14 @@
                     (when (= :NodeDataChanged (:event-type event))
                       (let [new-value (.deref this)]
                         (callback key this nil new-value)))
-                    (zk/exists client (.nodeName atomData) :watcher watcher-fn))]
-      (zk/exists client (.nodeName atomData) :watcher watcher)
+                    (zk/exists client nodeName :watcher watcher-fn))]
+      (zk/exists client nodeName :watcher watcher)
       this))
 
   (getWatches [this] (throw (UnsupportedOperationException.)))
 
   (removeWatch [this key] (throw (UnsupportedOperationException.)))
 
-  ;;throw new IllegalStateException("Invalid reference state");
   (setValidator [this f] (reset! validator f))
 
   (getValidator [this] @validator))
@@ -98,8 +95,6 @@
 
 (deftype ZKAtomData [client name]
   AtomData
-  (nodeName [this] name)
-
   (getValue [this]
     (let [{:keys [data stat]} (zk/data client name)]
       (deserialize-form data)))
@@ -111,7 +106,7 @@
      (zk-atom client name nil))
   ([client name init-value]
      (zk/create client name :persistent? true)
-     (doto (ZKAtomReference. client (ZKAtomData. client name)
+     (doto (DistributedAtom. client name (ZKAtomData. client name)
                              (atom nil) (atom {})
                              (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
        (.reset init-value))))
