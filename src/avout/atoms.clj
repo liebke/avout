@@ -7,7 +7,7 @@
 
 ;; PROTOCOLS
 
-(defprotocol AtomData
+(defprotocol AtomState
   (getValue [this] "Returns a map containing the :value and a :version
     which may just be the current value or a version number and is used in
     compareAndSet to determine if an update should occur.")
@@ -17,6 +17,12 @@
   (swap [this f] [this f args])
   (reset [this new-value])
   (compareAndSet [this old-value new-value]))
+
+;; DistributedAtom implementation
+
+(defn trigger-watchers
+  [client node-name]
+  (zk/set-data client node-name (data/to-bytes 0) -1))
 
 (deftype DistributedAtom [client nodeName atomData validator watch lock]
   AtomReference
@@ -36,7 +42,7 @@
         (if (and @validator (not (@validator new-value)))
           (throw (IllegalStateException. "Invalid reference state"))
           (do (.setValue atomData new-value)
-              (zk/set-data client nodeName (data/to-bytes 0) -1) ;; trigger watchers
+              (trigger-watchers client nodeName)
               new-value)))))
 
   (reset [this new-value]
@@ -44,13 +50,12 @@
       (if (and @validator (not (@validator new-value)))
         (throw (IllegalStateException. "Invalid reference state"))
         (do (.setValue atomData new-value)
-            (zk/set-data client nodeName (data/to-bytes 0) -1) ;; trigger watchers
+            (trigger-watchers client nodeName)
             new-value))))
 
   IRef
   (deref [this]
-    (locks/with-lock (.readLock lock)
-      (.getValue atomData)))
+    (.getValue atomData))
 
   (addWatch [this key callback] ;; callback params: akey, aref, old-val, new-val, but old-val will be nil
     (let [watcher (fn watcher-fn [event]
@@ -89,6 +94,7 @@
   "Cannot use standard reset! because Clojure expects a clojure.lang.Atom."
   ([atom old-value new-value] (.compareAndSet atom old-value new-value)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Default implementation of AtomReference that uses ZooKeeper has the data value container.
 
 (defn serialize-form
@@ -101,18 +107,40 @@
   ([form]
      (read-string (data/to-string form))))
 
-(deftype ZKAtomData [client name]
-  AtomData
+(deftype ZKAtomState [client dataNode]
+  AtomState
   (getValue [this]
-    (let [{:keys [data stat]} (zk/data client name)]
+    (let [{:keys [data stat]} (zk/data client dataNode)]
       (deserialize-form data)))
 
-  (setValue [this new-value] (zk/set-data client name (serialize-form new-value) -1)))
+  (setValue [this new-value] (zk/set-data client dataNode (serialize-form new-value) -1)))
 
 (defn zk-atom
   ([client name init-value]
      (doto (zk-atom client name)
        (.reset init-value)))
   ([client name]
-     (distributed-atom client name (ZKAtomData. client name))))
+     (distributed-atom client name (ZKAtomState. client (zk/create-all client (str name "/data"))))))
 
+
+(comment
+
+  (use 'avout.atoms :reload-all)
+  (require '[zookeeper :as zk])
+
+  (def client (zk/connect "127.0.0.1"))
+  (def a0 (zk-atom client "/a1") 0)
+  @a0
+  (swap!! a0 inc)
+  @a0
+
+  (def a1 (zk-atom client "/a1" {}))
+  @a1
+  (swap!! a1 assoc :a 1)
+  (swap!! a1 update-in [:a] inc)
+
+  ;; check that reads are not blocked by writes
+  (swap!! a1 (fn [v] (Thread/sleep 5000) (update-in % [:a] inc)))
+  @a1
+
+  )
