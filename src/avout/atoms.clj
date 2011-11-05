@@ -8,12 +8,12 @@
 ;; PROTOCOLS
 
 (defprotocol AtomState
-  (getValue [this] "Returns a map containing the :value and a :version
-    which may just be the current value or a version number and is used in
-    compareAndSet to determine if an update should occur.")
+  "Protocol to implement when creating new types of distributed atoms."
+  (getValue [this])
   (setValue [this value]))
 
 (defprotocol AtomReference
+  "The mutation methods used by the clojure.lang.Atom class."
   (swap [this f] [this f args])
   (reset [this new-value])
   (compareAndSet [this old-value new-value]))
@@ -25,39 +25,43 @@
   [client node-name]
   (zk/set-data client node-name (data/to-bytes 0) -1))
 
-(deftype DistributedAtom [client nodeName atomData validator watches lock]
+(defn validate [validator value]
+  (when (and validator (not (validator value)))
+    (throw (IllegalStateException. "Invalid reference state"))))
+
+(deftype DistributedAtom [client nodeName atomState validator watches lock]
   AtomReference
   (compareAndSet [this old-value new-value]
-    (if (and @validator (not (@validator new-value)))
-      (throw (IllegalStateException. "Invalid reference state"))
-      (locks/with-lock (.writeLock lock)
-        (let [value (.getValue atomData)]
-          (and (= old-value value)
-               (.setValue atomData new-value))))))
+    (validate @validator new-value)
+    (locks/with-lock (.writeLock lock)
+      (if (= old-value (.getValue atomState))
+        (do (.setValue atomState new-value)
+            (trigger-watchers client nodeName)
+            true)
+        false)))
 
   (swap [this f] (.swap this f nil))
 
   (swap [this f args]
     (locks/with-lock (.writeLock lock)
-      (let [new-value (apply f (.getValue atomData) args)]
-        (if (and @validator (not (@validator new-value)))
-          (throw (IllegalStateException. "Invalid reference state"))
-          (do (.setValue atomData new-value)
-              (trigger-watchers client nodeName)
-              new-value)))))
+      (let [new-value (apply f (.getValue atomState) args)]
+        (validate @validator new-value)
+        (.setValue atomState new-value)
+        (trigger-watchers client nodeName)
+        new-value)))
 
   (reset [this new-value]
     (locks/with-lock (.writeLock lock)
-      (if (and @validator (not (@validator new-value)))
-        (throw (IllegalStateException. "Invalid reference state"))
-        (do (.setValue atomData new-value)
-            (trigger-watchers client nodeName)
-            new-value))))
+      (validate @validator new-value)
+      (.setValue atomState new-value)
+      (trigger-watchers client nodeName)
+      new-value))
 
   IRef
-  (deref [this] (.getValue atomData))
+  (deref [this] (.getValue atomState))
 
-  (addWatch [this key callback] ;; callback params: akey, aref, old-val, new-val, but old-val will be nil
+  ;; callback params: akey, aref, old-val, new-val, but old-val will always be nil
+  (addWatch [this key callback]
     (let [watcher (fn watcher-fn [event]
                     (when (contains? @watches key)
                       (when (= :NodeDataChanged (:event-type event))

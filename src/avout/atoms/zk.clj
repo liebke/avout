@@ -28,7 +28,7 @@
        (.reset init-value))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Usage examples
+;; zk-atom examples
 (comment
 
   (use 'avout.atoms :reload-all)

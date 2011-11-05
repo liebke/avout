@@ -1,6 +1,9 @@
 # About Avout
 
-*Avout* is a Clojure library of distributed concurrency primitives (built on <a href="http://zookeeper.apache.org">ZooKeeper</a> with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>), including distributed implementations of *java.util.concurrent.lock.Lock*, *ReadWriteLock* and distributed versions of Clojure's *Atom* and *Ref*, the latter of which is built on an extensible, distributed *STM* for managing the state of remote, heterogeneous resources with the same **atomicity**, **consistency**, and **isolation** that <a href="http://clojure.org/refs">Clojure's STM</a> provides when <a href="http://clojure.org/state">managing local state</a>.
+*Avout* extends Clojure's syntax and semantics for managing <a href="http://clojure.org/state">in-memory state</a> to heterogeneous types of distributed state by providing distributed and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atoms</a>, <a href="http://clojure.org/refs">Refs</a>, and <a href="http://clojure.org/agents">Agents</a>. 
+
+*Avout* is built on <a href="http://zookeeper.apache.org">ZooKeeper</a>, with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>, and also includes distributed implementations of <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/Lock.html">*java.util.concurrent.lock.Lock*</a>, <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/ReadWriteLock.html">*java.util.concurrent.lock.ReadWriteLock*</a>.
+
 
 ## Design of avout.atom
 

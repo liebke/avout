@@ -1,4 +1,4 @@
-(defproject avout "0.7.0-SNAPSHOT"
-  :description "Avout is a Clojure library of distributed concurrency primitives based on Apache ZooKeeper."
+(defproject avout "0.5.0-SNAPSHOT"
+  :description "Avout extends Clojure's syntax and semantics for managing in-memory state to distributed state."
   :dependencies [[org.clojure/clojure "1.3.0"]
-                 [zookeeper-clj "0.9-beta1"]])
+                 [zookeeper-clj "0.9.0"]])

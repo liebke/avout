@@ -25,16 +25,17 @@
        (set-validator! validator)
        (.reset init-value))))
 
-;; example usage
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; mongo-atom examples
 (comment
-  ;; distributed state library (atoms, refs, agents)
+
   (use 'avout.atoms)
   (use 'avout.atoms.mongo :reload-all)
   (require '[somnium.congomongo :as mongo])
   (require '[zookeeper :as zk])
 
   (def zk-client (zk/connect "127.0.0.1"))
-  (def mongo-conn (mongo/make-connection "mydb" :host "127.0.0.1" :port 27017))
+  (def mongo-conn (mongo/make-connection "statedb" :host "127.0.0.1" :port 27017))
 
   (def a0 (mongo-atom zk-client mongo-conn "/a0" {:a 1}))
   @a0
@@ -43,13 +44,14 @@
   (swap!! a0 update-in [:a] inc)
   @a0
 
-  (def a1 (mongo-atom zk-client mongo-conn "/a1" 1 :validator #(> % 0)))
+  (def a1 (mongo-atom zk-client mongo-conn "/a1" 1 :validator pos?))
   (add-watch a1 :a1 (fn [key ref old-val new-val]
-                              (println key ref old-val new-val)))
+                      (println key ref old-val new-val)))
   @a1
   (swap!! a1 inc)
   @a1
   (swap!! a1 - 2)
+  (remove-watch a1 :a1)
   @a1
 
 )
