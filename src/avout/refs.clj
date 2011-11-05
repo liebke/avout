@@ -56,17 +56,19 @@
 (defn extract-point [path]
   (subs path (- (count path) 12) (count path)))
 
-(defn split-read-commit-points [history-node]
+(defn split-ref-commit-history [history-node]
   (when history-node
-    (let [[_ read-pt _ commit-pt] (s/split history-node #"-")]
-      [(str "t-" read-pt) (str "t-" commit-pt)])))
+    (let [[_ txid _ commit-pt] (s/split history-node #"-")]
+      [(str "t-" txid) (str "t-" commit-pt)])))
 
 (defn point-node [point]
   (str *stm-node* "/history/" point))
 
 (defn update-state
-  ([client point new-state] (zk/set-data client (point-node point) new-state -1))
-  ([client point old-state new-state] (zk/compare-and-set-data client (point-node point) old-state new-state)))
+  ([client point new-state]
+     (zk/set-data client (point-node point) new-state -1))
+  ([client point old-state new-state]
+     (zk/compare-and-set-data client (point-node point) old-state new-state)))
 
 (defn get-history [client ref-name]
   (zk/children client (str ref-name "/history")))
@@ -82,7 +84,7 @@
   ([client ref-name point]
      (let [history (util/sort-sequential-nodes > (get-history client ref-name))]
        (loop [[h & hs] history]
-         (when-let [[txid commit-pt] (split-read-commit-points h)]
+         (when-let [[txid commit-pt] (split-ref-commit-history h)]
            (if (current-state? client txid COMMITTED)
              txid
              (recur hs)))))))

@@ -8,8 +8,8 @@
 (def test-ref "/test-ref")
 (def txid0 "t-0000000000")
 (def txid1 "t-0000000001")
-(def txid2 "t-0000000002")
-(def txid3 "t-0000000003")
+(def commit-pt0 "t-0000000002")
+(def commit-pt1 "t-0000000003")
 (def pt0 (str *stm-node* "/history/" txid0))
 (def pt1 (str *stm-node* "/history/" txid1))
 
@@ -31,17 +31,17 @@
   (tag client test-ref txid0)
   (is (tagged? client test-ref))
 
-  (is (= (str test-ref "/history/" txid0 "-" txid2)
+  (is (= (str test-ref "/history/" txid0 "-" commit-pt0)
          (add-history client test-ref txid0 (next-point client))))
-  (is (= (str test-ref "/history/" txid1 "-" txid3)
+  (is (= (str test-ref "/history/" txid1 "-" commit-pt1)
          (add-history client test-ref txid1 (next-point client))))
   (is (= (into #{} (zk/children client (str test-ref "/history")))
-         #{(str txid0 "-" txid2)
-           (str txid1 "-" txid3)}))
-  (is (= [txid0 txid2] (split-read-commit-points (str txid0 "-" txid2))))
+         #{(str txid0 "-" commit-pt0)
+           (str txid1 "-" commit-pt1)}))
+  (is (= [txid0 commit-pt0] (split-ref-commit-history (str txid0 "-" commit-pt0))))
   (update-state client txid0 COMMITTED)
-
-
-  (is (= txid0 (get-committed-point-before client test-ref txid2)))
-
+  (is (= txid0 (get-committed-point-before client test-ref commit-pt0)))
+  (is (= txid0 (get-committed-point-before client test-ref (next-point client))))
+  (update-state client txid1 COMMITTED)
+  (is (= txid1 (get-committed-point-before client test-ref (next-point client))))
   )
