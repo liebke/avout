@@ -97,7 +97,7 @@
   (zk/delete-children client (str ref-name "/txn"))
   (zk/create client (str ref-name "/txn/" txid) :persistent? false))
 
-(defn add-history [client ref-name txid commit-point]
+(defn set-commit-point [client ref-name txid commit-point]
   (zk/create client (str ref-name "/history/" txid "-" (extract-point commit-point))
              :persistent? true))
 
