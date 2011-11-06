@@ -160,7 +160,7 @@
   (current-state? client txid RUNNING COMMITTING))
 
 (defn barge-time-elapsed? [txn]
-  (> (- (System/nanoTime) (.startTime txn))
+  (> (- (System/nanoTime) (deref (.startTime txn)))
      BARGE-WAIT-NANOS))
 
 (defn barge [txn barged-txid]
@@ -184,9 +184,9 @@
       (throw retryex))
     (throw retryex)))
 
-(defn stop [txn client]
+(defn stop [txn]
   (when-not (state= (deref (.state txn)) COMMITTED)
-    (update-state! client txn RETRY))
+    (update-state! (.client txn) txn RETRY))
   (reset! (.values txn) {})
   (reset! (.sets txn) #{})
   (.clear (.commutes txn))
@@ -198,7 +198,7 @@
   Transaction
 
   (doGet [this ref]
-    (if (running? client readPoint)
+    (if (running? client @readPoint)
       (or (get @values ref)
           (locks/if-lock-with-timeout (.readLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
             (.getState ref (get-committed-point-before client (.getRefName ref) @readPoint))
@@ -206,11 +206,11 @@
       (throw retryex)))
 
   (doSet [this ref value]
-    (if (running? client readPoint)
+    (if (running? client @readPoint)
       (do
         (when-not (contains? @sets ref)
           (swap! sets conj ref)
-          (lock-ref client ref readPoint))
+          (lock-ref client ref @readPoint))
         (swap! values assoc ref value)
         value)
       (throw retryex)))
@@ -228,28 +228,36 @@
       (if (< retry-count RETRY-LIMIT)
         (do
           (try
-            (reset! readPoint (next-point client))
-            (reset! startTime (System/nanoTime))
-            (update-state client this RUNNING)
+            ;; if this txn has been killed once, then
+            ;; counting down the latch will prevent
+            ;; block-and-bail from blocking, just bails and retries
+            (when (and (pos? retry-count)
+                       (current-state? client @readPoint KILLED))
+              (.countDown latch))
+            (when (zero? retry-count)
+              (reset! readPoint (next-point client))
+              (reset! startTime (System/nanoTime)))
+            (update-state client @readPoint RUNNING)
+            ;; f is user defined, and potentially long running
             (reset! returnValue (f))
-            (when (update-state client this RUNNING COMMITTING)
+            ;; once f has successfully run, begin the commit process
+            (when (update-state client @readPoint RUNNING COMMITTING)
               (process-commutes this)
               (process-sets this)
               (reset! commitPoint (next-point client))
               (process-values this)
-              (update-state client this COMMITTED))
+              (update-state client @readPoint COMMITTED))
             (catch Error e
               (if (retryex? e)
-                (do
-                  (println "Retrying Transaction..."))
+                (println "Retrying Transaction...")
                 (throw e)))
             (finally
               (unlock-refs this)
-              (stop this client)))
-          (when-not (current-state? client readPoint COMMITTED)
+              (stop this)))
+          (when-not (current-state? client @readPoint COMMITTED)
             (recur (inc retry-count))))
         (throw (RuntimeException. "Transaction failed after reaching retry limit"))))
-    (deref (.returnValue this))))
+    @returnValue))
 
 
 (defn get-local-transaction [client]
