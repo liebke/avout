@@ -129,17 +129,13 @@
   [client ref-name]
   (zk/set-data client ref-name (data/to-bytes 0) -1))
 
-(defn validate [validator value]
-  (when (and validator (not (validator value)))
-    (throw (IllegalStateException. "Invalid reference state"))))
-
 (defn try-write-lock [txn ref]
   (if-not (.tryLock (.writeLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
     (swap! (.locked txn) conj ref)
     (throw retryex)))
 
 (defn unlock-refs [txn]
-  (doseq [r (.locked txn)]
+  (doseq [r (deref (.locked txn))]
     (.unlock (.writeLock (.lock r))))
   (reset! (.locked txn) #{}))
 
@@ -148,25 +144,30 @@
   nil)
 
 (defn process-sets [txn]
-  (doseq [r (.sets txn)]
+  (doseq [r (deref (.sets txn))]
     (try-write-lock txn r)))
+
+(defn validate [validator value]
+  (when (and validator (not (validator value)))
+    (throw (IllegalStateException. "Invalid reference state"))))
+
+(defn validate-values [txn]
+  (let [values (deref (.values txn))]
+    (doseq [r (keys values)]
+      (validate (deref (.validator r)) (get values r)))))
 
 (defn process-values [txn ref-state]
   (let [values (deref (.values txn))]
     (doseq [r (keys values)]
-      (.setState ref-state (.getRefName r) (get values r) (.getCommitPoint txn)))))
-
-(defn running? [client txid]
-  (current-state? client txid RUNNING COMMITTING))
+      (.setState ref-state (.getRefName r) (get values r) (deref (.getCommitPoint txn))))))
 
 (defn barge-time-elapsed? [txn]
   (> (- (System/nanoTime) (deref (.startTime txn)))
      BARGE-WAIT-NANOS))
 
 (defn barge [txn barged-txid]
-  ;; need equiv of (.countDown (.latch barged-txn))
   (and (barge-time-elapsed? txn)
-       (< (.readPoint txn) barged-txid)
+       (< (deref (.readPoint txn)) barged-txid)
        (update-state (.client txn) barged-txid RUNNING KILLED)))
 
 (defn block-and-bail [txn]
@@ -175,18 +176,18 @@
 
 (defn lock-ref [client ref txn]
   (locks/if-lock-with-timeout (.writeLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
-    (if (get-committed-point-before client (.getRefName ref) (.readPoint txn))
+    (if (get-committed-point-before client (.getRefName ref) (deref (.readPoint txn)))
       (do
         (when-let [other-txid (tagged? client (.getRefName ref))]
          (when-not (barge txn other-txid)
            (block-and-bail txn)))
-        (tag-ref client (.getRefName ref) (.readPoint txn)))
+        (tag-ref client (.getRefName ref) (deref (.readPoint txn))))
       (throw retryex))
     (throw retryex)))
 
 (defn stop [txn]
-  (when-not (state= (deref (.state txn)) COMMITTED)
-    (update-state! (.client txn) txn RETRY))
+  (when-not (current-state? (.client txn) (deref (.readPoint txn)) COMMITTED)
+    (update-state (.client txn) (deref (.readPoint txn)) RETRY))
   (reset! (.values txn) {})
   (reset! (.sets txn) #{})
   (.clear (.commutes txn))
@@ -198,7 +199,7 @@
   Transaction
 
   (doGet [this ref]
-    (if (running? client @readPoint)
+    (if (current-state? client @readPoint RUNNING COMMITTING)
       (or (get @values ref)
           (locks/if-lock-with-timeout (.readLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
             (.getState ref (get-committed-point-before client (.getRefName ref) @readPoint))
@@ -206,7 +207,7 @@
       (throw retryex)))
 
   (doSet [this ref value]
-    (if (running? client @readPoint)
+    (if (current-state? client @readPoint RUNNING COMMITTING)
       (do
         (when-not (contains? @sets ref)
           (swap! sets conj ref)
@@ -228,12 +229,6 @@
       (if (< retry-count RETRY-LIMIT)
         (do
           (try
-            ;; if this txn has been killed once, then
-            ;; counting down the latch will prevent
-            ;; block-and-bail from blocking, just bails and retries
-            (when (and (pos? retry-count)
-                       (current-state? client @readPoint KILLED))
-              (.countDown latch))
             (when (zero? retry-count)
               (reset! readPoint (next-point client))
               (reset! startTime (System/nanoTime)))
@@ -242,8 +237,9 @@
             (reset! returnValue (f))
             ;; once f has successfully run, begin the commit process
             (when (update-state client @readPoint RUNNING COMMITTING)
-              (process-commutes this)
+              (process-commutes this) ;; TODO
               (process-sets this)
+              (validate-values this)
               (reset! commitPoint (next-point client))
               (process-values this)
               (update-state client @readPoint COMMITTED))
