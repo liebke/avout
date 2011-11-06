@@ -6,11 +6,11 @@
 
 (deftype MongoAtomState [conn name]
   AtomState
-  (getValue [this]
+  (getState [this]
     (:value (mongo/with-mongo conn
               (mongo/fetch-one :atoms :where {:name name}))))
 
-  (setValue [this new-value]
+  (setState [this new-value]
     (let [data (mongo/with-mongo conn (mongo/fetch-one :atoms :where {:name name}))]
       (mongo/with-mongo conn
         (mongo/update! :atoms data (assoc data :value new-value))))))

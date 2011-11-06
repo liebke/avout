@@ -1,5 +1,5 @@
 (ns avout-mongo.test.atom
-  (:use [avout-mongo.atom])
+  (:use [avout.atoms.mongo])
   (:use [clojure.test]))
 
 (deftest replace-me ;; FIXME: write

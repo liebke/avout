@@ -9,8 +9,8 @@
 
 (defprotocol AtomState
   "Protocol to implement when creating new types of distributed atoms."
-  (getValue [this])
-  (setValue [this value]))
+  (getState [this])
+  (setState [this value]))
 
 (defprotocol AtomReference
   "The mutation methods used by the clojure.lang.Atom class."
@@ -34,8 +34,8 @@
   (compareAndSet [this old-value new-value]
     (validate @validator new-value)
     (locks/with-lock (.writeLock lock)
-      (if (= old-value (.getValue atomState))
-        (do (.setValue atomState new-value)
+      (if (= old-value (.getState atomState))
+        (do (.setState atomState new-value)
             (trigger-watchers client nodeName)
             true)
         false)))
@@ -44,27 +44,27 @@
 
   (swap [this f args]
     (locks/with-lock (.writeLock lock)
-      (let [new-value (apply f (.getValue atomState) args)]
+      (let [new-value (apply f (.getState atomState) args)]
         (validate @validator new-value)
-        (.setValue atomState new-value)
+        (.setState atomState new-value)
         (trigger-watchers client nodeName)
         new-value)))
 
   (reset [this new-value]
     (locks/with-lock (.writeLock lock)
       (validate @validator new-value)
-      (.setValue atomState new-value)
+      (.setState atomState new-value)
       (trigger-watchers client nodeName)
       new-value))
 
   IRef
-  (deref [this] (.getValue atomState))
+  (deref [this] (.getState atomState))
 
   ;; callback params: akey, aref, old-val, new-val, but old-val will always be nil
   (addWatch [this key callback]
     (let [watcher (fn watcher-fn [event]
                     (when (contains? @watches key)
-                      (when (= :NodeDataChanged (:event-type event))
+                      (when (= :NodeStateChanged (:event-type event))
                        (let [new-value (.deref this)]
                          (callback key this nil new-value)))
                       (zk/exists client nodeName :watcher watcher-fn)))]

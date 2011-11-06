@@ -15,11 +15,11 @@
 
 (deftype ZKAtomState [client dataNode]
   AtomState
-  (getValue [this]
+  (getState [this]
     (let [{:keys [data stat]} (zk/data client dataNode)]
       (deserialize-form data)))
 
-  (setValue [this new-value] (zk/set-data client dataNode (serialize-form new-value) -1)))
+  (setState [this new-value] (zk/set-data client dataNode (serialize-form new-value) -1)))
 
 (defn zk-atom
   ([client name init-value & {:keys [validator]}]
