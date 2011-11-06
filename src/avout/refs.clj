@@ -25,6 +25,7 @@
 (defprotocol TransactionReference
   (getName [this])
   (setRef [this value])
+  (alterRef [this value] (throw (UnsupportedOperationException.)))
   (commuteRef [this f args])
   (ensureRef [this]))
 
@@ -70,11 +71,13 @@
 
 (defn next-point
   ([client]
+     (println "next-point called")
      (zk/create client (str *stm-node* "/history/t-")
                 :persistent? true
                 :sequential? true)))
 
 (defn extract-point [path]
+  (println "extract-point: " path)
   (subs path (- (count path) 12) (count path)))
 
 (defn split-ref-commit-history [history-node]
@@ -87,8 +90,10 @@
 
 (defn update-state
   ([client point new-state]
+     (println "update-state: client, point, new-state: " client point new-state)
      (zk/set-data client (point-node point) new-state -1))
   ([client point old-state new-state]
+     (println "update-state: client, point, old-state, new-state: " client point old-state new-state)
      (zk/compare-and-set-data client (point-node point) old-state new-state)))
 
 (defn get-history [client ref-name]
@@ -98,16 +103,29 @@
   (Arrays/equals s1 s2))
 
 (defn current-state? [client txid & states]
-  (let [state (:data (zk/data client (point-node txid)))]
-    (reduce #(or %1 (state= state %2)) false states)))
+  (when txid
+    (let [state (:data (zk/data client (point-node txid)))]
+      (reduce #(or %1 (state= state %2)) false states))))
 
-(defn get-committed-point-before
-  "Gets the committed point before the given one, if none is available, throws retryex"
-  ([client ref-name point]
+(defn get-last-committed-point
+  "Gets the last committed point for the given Ref."
+  ([client ref-name]
      (let [history (util/sort-sequential-nodes > (get-history client ref-name))]
        (loop [[h & hs] history]
          (when-let [[txid commit-pt] (split-ref-commit-history h)]
            (if (current-state? client txid COMMITTED)
+             h
+             (recur hs)))))))
+
+(defn get-committed-point-before
+  "Gets the committed point before the given one."
+  ([client ref-name point]
+     (let [history (util/sort-sequential-nodes > (get-history client ref-name))
+           point-int (util/extract-id point)]
+       (loop [[h & hs] history]
+         (when-let [[txid commit-pt] (split-ref-commit-history h)]
+           (if (and (<= (util/extract-id commit-pt) point-int)
+                    (current-state? client txid COMMITTED))
              h
              (recur hs)))))))
 
@@ -125,9 +143,10 @@
   (zk/create client (str ref-name "/history/" txid "-" commit-point)
              :persistent? true))
 
-(defn trigger-watchers
-  [client ref-name]
-  (zk/set-data client ref-name (data/to-bytes 0) -1))
+(defn trigger-watches
+  [txn]
+  (doseq [r (keys (deref (.values txn)))]
+    (zk/set-data (.client txn) (.getName r) (data/to-bytes 0) -1)))
 
 (defn try-write-lock [txn ref]
   (if (.tryLock (.writeLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
@@ -178,6 +197,8 @@
   (throw retryex))
 
 (defn lock-ref [txn ref]
+  (println "lock-ref: history" (get-history (.client txn) (.getName ref)))
+  (println "lock-ref: readPoint " (deref (.readPoint txn)))
   (locks/if-lock-with-timeout (.writeLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
     (if (or (not (get-history (.client txn) (.getName ref)))
             (get-committed-point-before (.client txn) (.getName ref) (deref (.readPoint txn))))
@@ -239,13 +260,18 @@
 
   (runInTransaction [this f]
     (loop [retry-count 0]
+      (println "looping...")
       (if (< retry-count RETRY-LIMIT)
         (do
           (try
             (when (zero? retry-count)
+              (println "setting readPoint:" readPoint)
               (reset! readPoint (extract-point (next-point client)))
+              (println "new readPoint: " readPoint)
               (reset! startTime (System/nanoTime)))
+            (println "about to set readPoint")
             (update-state client @readPoint RUNNING)
+            (println "just set readPoint")
             ;; f is user defined, and potentially long running
             (reset! returnValue (f))
             ;; once f has successfully run, begin the commit process
@@ -255,37 +281,43 @@
               (validate-values this)
               (reset! commitPoint (extract-point (next-point client)))
               (process-values this)
+              (trigger-watches this)
               (update-state client @readPoint COMMITTED))
             (catch Error e
               (if (retryex? e)
-                (do (println "runInTransaction: Retrying Transaction...")
-                    (.printStackTrace e))
-                (throw e)))
+                (println "runInTransaction: Retrying Transaction...")
+                (do
+                  (println "Exception thrown in runInTransaction: " e)
+                  (throw e))))
             (finally
-              (unlock-refs this)
-              (stop this)))
+             (unlock-refs this)
+             (println "runInTransaction before stop: readPoint: " @readPoint)
+             (stop this)))
           (when-not (current-state? client @readPoint COMMITTED)
             (recur (inc retry-count))))
         (throw (RuntimeException. "Transaction failed after reaching retry limit"))))
     @returnValue))
 
+(defn create-local-transaction [client]
+  (.set local-transaction
+        (LockingTransaction. (atom nil)         ;; returnValue
+                             client             ;; client
+                             (atom nil)         ;; startTime
+                             (atom nil)         ;; readPoint
+                             (atom nil)         ;; commitPoint
+                             (atom {})          ;; values
+                             (atom #{})         ;; sets
+                             (TreeMap.)         ;; commutes
+                             (atom #{})         ;; ensures
+                             (atom #{})         ;; locked
+                             (CountDownLatch. 1) ;; latch
+                             )))
 
 (defn get-local-transaction [client]
-  (or (.get local-transaction)
-      (do (.set local-transaction
-                (LockingTransaction. (atom nil) ;; returnValue
-                                     client ;; client
-                                     (atom nil) ;; startTime
-                                     (atom nil) ;; readPoint
-                                     (atom nil) ;; commitPoint
-                                     (atom {}) ;; values
-                                     (atom #{}) ;; sets
-                                     (TreeMap.) ;; commutes
-                                     (atom #{}) ;; ensures
-                                     (atom #{}) ;; locked
-                                     (CountDownLatch. 1) ;; latch
-                                     ))
-          (.get local-transaction))))
+  (or
+   (.get local-transaction)
+   (do (create-local-transaction client)
+       (.get local-transaction))))
 
 (defn run-in-transaction [client f]
   (.runInTransaction (get-local-transaction client) f))
@@ -293,18 +325,38 @@
 
 ;; distributed reference implementation
 
+(defn running? [txn]
+  (current-state? (.client txn) (deref (.readPoint txn)) RUNNING COMMITTING))
+
+(defmacro dotxn
+  ([client & body]
+     `(do
+       (create-local-transaction ~client)
+       (run-in-transaction ~client (fn [] ~@body)))))
+
 (deftype DistributedReference [client nodeName refState validator watches lock]
   TransactionReference
   (getName [this] nodeName)
 
-  (setRef [this value] (throw (UnsupportedOperationException.)))
+  (setRef [this value]
+    (let [t (get-local-transaction client)]
+      (if (running? t)
+        (.doSet t this value)
+        (throw (RuntimeException. "Must run set-ref from a transaction")))))
+
+  (alterRef [this value] (throw (UnsupportedOperationException.)))
 
   (commuteRef [this f args] (throw (UnsupportedOperationException.)))
 
   (ensureRef [this] (throw (UnsupportedOperationException.)))
 
   IRef
-  (deref [this] (throw (UnsupportedOperationException.)))
+  (deref [this]
+    (let [t (get-local-transaction client)]
+      (if (running? t)
+        (.doGet t this)
+        (locks/with-lock (.readLock (.lock this))
+          (.getState refState (get-last-committed-point client (.getName this)))))))
 
   ;; callback params: akey, aref, old-val, new-val, but old-val will always be nil
   (addWatch [this key callback]
@@ -364,3 +416,11 @@
        dref
        ;;(.setState (.refState dref) init-value 0)
        )))
+
+;; ref functions
+
+(defn ref-set!! [ref value]
+  (.setRef ref value))
+
+(defn alter!! [ref f & args]
+  (.alterRef ref f args))
