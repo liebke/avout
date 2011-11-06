@@ -28,7 +28,7 @@
   (is (current-state? client txid0 COMMITTING))
 
   (is (not (tagged? client test-ref)))
-  (tag client test-ref txid0)
+  (tag-ref client test-ref txid0)
   (is (tagged? client test-ref))
 
   (is (= (str test-ref "/history/" txid0 "-" commit-pt0)
