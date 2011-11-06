@@ -23,6 +23,7 @@
   (runInTransaction [this f]))
 
 (defprotocol TransactionReference
+  (getName [this])
   (setRef [this value])
   (commuteRef [this f args])
   (ensureRef [this]))
@@ -33,9 +34,9 @@
 
 (def ^:dynamic *stm-node* "/stm")
 
-(def RETRY-LIMIT 10)
+(def RETRY-LIMIT 5)
 (def LOCK-WAIT-MSEC (* 10 100))
-(def BARGE-WAIT-NANOS (* 10 10 1000000))
+(def BARGE-WAIT-NANOS (* 100 10 1000000))
 
 ;; transaction states
 (def RUNNING (data/to-bytes 0))
@@ -105,11 +106,10 @@
   ([client ref-name point]
      (let [history (util/sort-sequential-nodes > (get-history client ref-name))]
        (loop [[h & hs] history]
-         (if-let [[txid commit-pt] (split-ref-commit-history h)]
+         (when-let [[txid commit-pt] (split-ref-commit-history h)]
            (if (current-state? client txid COMMITTED)
-             txid
-             (recur hs))
-           (throw retryex))))))
+             h
+             (recur hs)))))))
 
 (defn tagged? [client ref-name]
   "Returns the txid of the running transaction that tagged this ref, otherwise it returns nil"
@@ -122,7 +122,7 @@
   (zk/create client (str ref-name "/txn/" txid) :persistent? false))
 
 (defn set-commit-point [client ref-name txid commit-point]
-  (zk/create client (str ref-name "/history/" txid "-" (extract-point commit-point))
+  (zk/create client (str ref-name "/history/" txid "-" commit-point)
              :persistent? true))
 
 (defn trigger-watchers
@@ -130,9 +130,10 @@
   (zk/set-data client ref-name (data/to-bytes 0) -1))
 
 (defn try-write-lock [txn ref]
-  (if-not (.tryLock (.writeLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
+  (if (.tryLock (.writeLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
     (swap! (.locked txn) conj ref)
-    (throw retryex)))
+    (do (println "try-write-lock: timeout")
+        (throw retryex))))
 
 (defn unlock-refs [txn]
   (doseq [r (deref (.locked txn))]
@@ -156,10 +157,11 @@
     (doseq [r (keys values)]
       (validate (deref (.validator r)) (get values r)))))
 
-(defn process-values [txn ref-state]
+(defn process-values [txn]
   (let [values (deref (.values txn))]
     (doseq [r (keys values)]
-      (.setState ref-state (.getRefName r) (get values r) (deref (.getCommitPoint txn))))))
+      (set-commit-point (.client txn) (.getName r) (deref (.readPoint txn)) (deref (.commitPoint txn)))
+      (.setState (.refState r) (get values r) (str (deref (.readPoint txn)) "-" (deref (.commitPoint txn)))))))
 
 (defn barge-time-elapsed? [txn]
   (> (- (System/nanoTime) (deref (.startTime txn)))
@@ -167,23 +169,28 @@
 
 (defn barge [txn barged-txid]
   (and (barge-time-elapsed? txn)
-       (< (deref (.readPoint txn)) barged-txid)
+       (< (util/extract-id (deref (.readPoint txn))) (util/extract-id barged-txid))
        (update-state (.client txn) barged-txid RUNNING KILLED)))
 
 (defn block-and-bail [txn]
   (.await (.latch txn) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
+  (println "block-and-bail")
   (throw retryex))
 
-(defn lock-ref [client ref txn]
+(defn lock-ref [txn ref]
   (locks/if-lock-with-timeout (.writeLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
-    (if (get-committed-point-before client (.getRefName ref) (deref (.readPoint txn)))
+    (if (or (not (get-history (.client txn) (.getName ref)))
+            (get-committed-point-before (.client txn) (.getName ref) (deref (.readPoint txn))))
       (do
-        (when-let [other-txid (tagged? client (.getRefName ref))]
-         (when-not (barge txn other-txid)
-           (block-and-bail txn)))
-        (tag-ref client (.getRefName ref) (deref (.readPoint txn))))
-      (throw retryex))
-    (throw retryex)))
+        (when-let [other-txid (tagged? (.client txn) (.getName ref))]
+          (when (and (not= (deref (.readPoint txn)) other-txid) (not (barge txn other-txid)))
+            (println "calling barge: " (deref (.readPoint txn)) ", " other-txid)
+            (block-and-bail txn)))
+        (tag-ref (.client txn) (.getName ref) (deref (.readPoint txn))))
+      (do (println "lock-ref: no commit point before read point")
+          (throw retryex)))
+    (do (println "lock-ref: lock timeout")
+        (throw retryex))))
 
 (defn stop [txn]
   (when-not (current-state? (.client txn) (deref (.readPoint txn)) COMMITTED)
@@ -202,19 +209,25 @@
     (if (current-state? client @readPoint RUNNING COMMITTING)
       (or (get @values ref)
           (locks/if-lock-with-timeout (.readLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
-            (.getState ref (get-committed-point-before client (.getRefName ref) @readPoint))
-            (throw retryex)))
-      (throw retryex)))
+            (if-let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
+              (.getState (.refState ref) commit-point)
+              (do (println "doGet: no commit point before read-point")
+                  (throw retryex)))
+            (do (println "doGet: lock timeout")
+                (throw retryex))))
+      (do (println "doGet: transaction not running")
+          (throw retryex))))
 
   (doSet [this ref value]
     (if (current-state? client @readPoint RUNNING COMMITTING)
       (do
         (when-not (contains? @sets ref)
           (swap! sets conj ref)
-          (lock-ref client ref @readPoint))
+          (lock-ref this ref))
         (swap! values assoc ref value)
         value)
-      (throw retryex)))
+      (do (println "doSet: transaction not running")
+          (throw retryex))))
 
   (doCommute [this f args]
     ;; TODO
@@ -230,7 +243,7 @@
         (do
           (try
             (when (zero? retry-count)
-              (reset! readPoint (next-point client))
+              (reset! readPoint (extract-point (next-point client)))
               (reset! startTime (System/nanoTime)))
             (update-state client @readPoint RUNNING)
             ;; f is user defined, and potentially long running
@@ -240,12 +253,13 @@
               (process-commutes this) ;; TODO
               (process-sets this)
               (validate-values this)
-              (reset! commitPoint (next-point client))
+              (reset! commitPoint (extract-point (next-point client)))
               (process-values this)
               (update-state client @readPoint COMMITTED))
             (catch Error e
               (if (retryex? e)
-                (println "Retrying Transaction...")
+                (do (println "runInTransaction: Retrying Transaction...")
+                    (.printStackTrace e))
                 (throw e)))
             (finally
               (unlock-refs this)
@@ -281,6 +295,8 @@
 
 (deftype DistributedReference [client nodeName refState validator watches lock]
   TransactionReference
+  (getName [this] nodeName)
+
   (setRef [this value] (throw (UnsupportedOperationException.)))
 
   (commuteRef [this f args] (throw (UnsupportedOperationException.)))
@@ -311,21 +327,40 @@
   (getValidator [this] @validator))
 
 (defn distributed-ref [client name ref-state & {:keys [validator]}]
-  (zk/create client name :persistent? true)
+  (init-ref client name)
   (DistributedReference. client name ref-state
                          (atom validator) (atom {})
                          (locks/distributed-read-write-lock client :lock-node (str name "/lock"))))
 
 ;; ZK data implementation
 
+(defn serialize-form
+  "Serializes a Clojure form to a byte-array."
+  ([form]
+     (data/to-bytes (pr-str form))))
+
+(defn deserialize-form
+  "Deserializes a byte-array to a Clojure form."
+  ([form]
+     (read-string (data/to-string form))))
+
 (deftype ZKRefState [client name]
   ReferenceState
-  (setState [this value point] (throw (UnsupportedOperationException.)))
+  (getRefName [this] name)
 
-  (getState [this point] (throw (UnsupportedOperationException.))))
+  (getState [this point]
+    (let [_ (println "getState: history-node:" " name: " name ", point: " point)
+          {:keys [data stat]} (zk/data client (str name "/history/" point))]
+      (deserialize-form data)))
+
+  (setState [this value point]
+    (println "setState: " " name: " name ", point: " point)
+    (zk/set-data client (str name "/history/" point) (serialize-form value) -1)))
 
 (defn zk-ref
   ([client name init-value & {:keys [validator]}]
-     (doto (distributed-ref client name (ZKRefState. client name))
-       (set-validator! validator)
-       (.reset init-value))))
+     (let [dref (doto (distributed-ref client name (ZKRefState. client name))
+                  (set-validator! validator))]
+       dref
+       ;;(.setState (.refState dref) init-value 0)
+       )))

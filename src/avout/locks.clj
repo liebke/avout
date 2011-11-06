@@ -337,7 +337,7 @@
                   watcher #(when-lock-with-timeout lock time-left (TimeUnit/NANOSECONDS) (.signal lock-event))]
               (.set requestId (str "read-" (.toString (UUID/randomUUID))))
               (mli/submit-read-lock-request client lockNode (.get requestId) watcher)
-              (.awaitNanos lock-event time-left)
+              (with-lock lock (.awaitNanos lock-event time-left))
               (cond
                 (Thread/interrupted)
                   (do (mli/delete-lock-request-node client lockNode (.get requestId))
