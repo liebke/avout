@@ -25,7 +25,7 @@
 (defprotocol TransactionReference
   (getName [this])
   (setRef [this value])
-  (alterRef [this value] (throw (UnsupportedOperationException.)))
+  (alterRef [this f args])
   (commuteRef [this f args])
   (ensureRef [this]))
 
@@ -71,13 +71,11 @@
 
 (defn next-point
   ([client]
-     (println "next-point called")
      (zk/create client (str *stm-node* "/history/t-")
                 :persistent? true
                 :sequential? true)))
 
 (defn extract-point [path]
-  (println "extract-point: " path)
   (subs path (- (count path) 12) (count path)))
 
 (defn split-ref-commit-history [history-node]
@@ -90,10 +88,8 @@
 
 (defn update-state
   ([client point new-state]
-     (println "update-state: client, point, new-state: " client point new-state)
      (zk/set-data client (point-node point) new-state -1))
   ([client point old-state new-state]
-     (println "update-state: client, point, old-state, new-state: " client point old-state new-state)
      (zk/compare-and-set-data client (point-node point) old-state new-state)))
 
 (defn get-history [client ref-name]
@@ -197,15 +193,12 @@
   (throw retryex))
 
 (defn lock-ref [txn ref]
-  (println "lock-ref: history" (get-history (.client txn) (.getName ref)))
-  (println "lock-ref: readPoint " (deref (.readPoint txn)))
   (locks/if-lock-with-timeout (.writeLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
     (if (or (not (get-history (.client txn) (.getName ref)))
             (get-committed-point-before (.client txn) (.getName ref) (deref (.readPoint txn))))
       (do
         (when-let [other-txid (tagged? (.client txn) (.getName ref))]
           (when (and (not= (deref (.readPoint txn)) other-txid) (not (barge txn other-txid)))
-            (println "calling barge: " (deref (.readPoint txn)) ", " other-txid)
             (block-and-bail txn)))
         (tag-ref (.client txn) (.getName ref) (deref (.readPoint txn))))
       (do (println "lock-ref: no commit point before read point")
@@ -260,18 +253,13 @@
 
   (runInTransaction [this f]
     (loop [retry-count 0]
-      (println "looping...")
       (if (< retry-count RETRY-LIMIT)
         (do
           (try
             (when (zero? retry-count)
-              (println "setting readPoint:" readPoint)
               (reset! readPoint (extract-point (next-point client)))
-              (println "new readPoint: " readPoint)
               (reset! startTime (System/nanoTime)))
-            (println "about to set readPoint")
             (update-state client @readPoint RUNNING)
-            (println "just set readPoint")
             ;; f is user defined, and potentially long running
             (reset! returnValue (f))
             ;; once f has successfully run, begin the commit process
@@ -291,7 +279,6 @@
                   (throw e))))
             (finally
              (unlock-refs this)
-             (println "runInTransaction before stop: readPoint: " @readPoint)
              (stop this)))
           (when-not (current-state? client @readPoint COMMITTED)
             (recur (inc retry-count))))
@@ -344,7 +331,11 @@
         (.doSet t this value)
         (throw (RuntimeException. "Must run set-ref from a transaction")))))
 
-  (alterRef [this value] (throw (UnsupportedOperationException.)))
+  (alterRef [this f args]
+    (let [t (get-local-transaction client)]
+      (if (running? t)
+        (.doSet t this (apply f (.doGet t this) args))
+        (throw (RuntimeException. "Must run set-ref from a transaction")))))
 
   (commuteRef [this f args] (throw (UnsupportedOperationException.)))
 
@@ -401,12 +392,10 @@
   (getRefName [this] name)
 
   (getState [this point]
-    (let [_ (println "getState: history-node:" " name: " name ", point: " point)
-          {:keys [data stat]} (zk/data client (str name "/history/" point))]
+    (let [{:keys [data stat]} (zk/data client (str name "/history/" point))]
       (deserialize-form data)))
 
   (setState [this value point]
-    (println "setState: " " name: " name ", point: " point)
     (zk/set-data client (str name "/history/" point) (serialize-form value) -1)))
 
 (defn zk-ref
