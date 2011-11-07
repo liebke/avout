@@ -25,7 +25,9 @@
   ([client name init-value & {:keys [validator]}]
      (doto (distributed-atom client name (ZKAtomState. client (zk/create-all client (str name "/data"))))
        (set-validator! validator)
-       (.reset init-value))))
+       (.reset init-value)))
+  ([client name] ;; for connecting to an existing atom only
+     (distributed-atom client name (ZKAtomState. client (zk/create-all client (str name "/data"))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; zk-atom examples
