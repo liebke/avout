@@ -125,16 +125,6 @@
                  (> (util/extract-id commit-pt) (util/extract-id point)))
              (recur hs)))))))
 
-(defn get-committing-point
-  "Returns the last committed/commtting-point in the state of committing if it exists."
-  ([client ref-name]
-     (when-let [history (util/sort-sequential-nodes > (get-history client ref-name))]
-       (loop [[h & hs] history]
-         (when-let [[txid commit-pt] (split-ref-commit-history h)]
-           (if (current-state? client txid COMMITTING COMMITTED)
-             h
-             (recur hs)))))))
-
 (defn get-committed-point-before
   "Gets the committed point before the given one."
   ([client ref-name point]
@@ -162,8 +152,8 @@
       (zk/delete-children (.client txn) (str (.getName ref) "/txn"))
       (zk/create (.client txn) (str (.getName ref) "/txn/" (deref (.txid txn))) :persistent? false))))
 
-(defn set-commit-point [client ref-name txid commit-point]
-  (zk/create client (str ref-name "/history/" txid "-" commit-point)
+(defn write-commit-point [txn ref]
+  (zk/create (.client txn) (str (.getName ref) "/history/" (deref (.txid txn)) "-" (deref (.commitPoint txn)))
              :persistent? true))
 
 (defn trigger-watches
@@ -175,9 +165,6 @@
 (defn process-commutes [txn]
   ;;TODO
   nil)
-
-(defn process-sets [txn]
-  )
 
 (defn validate [validator value]
   (when (and validator (not (validator value)))
@@ -191,7 +178,7 @@
 (defn process-values [txn]
   (let [values (deref (.values txn))]
    (doseq [r (keys values)]
-     (set-commit-point (.client txn) (.getName r) (deref (.readPoint txn)) (deref (.commitPoint txn)))
+     (write-commit-point txn r)
      (.setState (.refState r) (get values r) (str (deref (.readPoint txn)) "-" (deref (.commitPoint txn)))))))
 
 (defn barge-time-elapsed? [txn]
@@ -296,7 +283,6 @@
             (when (update-state client @txid RUNNING COMMITTING)
               (println "COMMITTING: " @txid)
               ;(process-commutes this) ;; TODO
-              ;(process-sets this)
               (validate-values this)
               (reset! commitPoint (extract-point (next-point client)))
               (process-values this)
