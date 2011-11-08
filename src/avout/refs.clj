@@ -88,6 +88,7 @@
 
 (defn update-state
   ([client point new-state]
+     (println "update-state: " point (data/to-long new-state))
      (zk/set-data client (point-node point) new-state -1))
   ([client point old-state new-state]
      (zk/compare-and-set-data client (point-node point) old-state new-state)))
@@ -113,6 +114,17 @@
              h
              (recur hs)))))))
 
+(defn get-committing-point
+  "Returns the last committed/commtting-point in the state of committing if it exists."
+  ([client ref-name]
+     (let [history (util/sort-sequential-nodes > (get-history client ref-name))]
+       (loop [[h & hs] history]
+         (when-let [[txid commit-pt] (split-ref-commit-history h)]
+           (cond
+             (current-state? client txid COMMITTED) h
+             (current-state? client txid COMMITTING) h
+             :else (recur hs)))))))
+
 (defn get-committed-point-before
   "Gets the committed point before the given one."
   ([client ref-name point]
@@ -127,8 +139,10 @@
 
 (defn tagged? [client ref-name]
   "Returns the txid of the running transaction that tagged this ref, otherwise it returns nil"
+  (println "tagged? " ref-name)
   (when-let [txid (first (zk/children client (str ref-name "/txn")))]
     (when (current-state? client txid RUNNING COMMITTING)
+      (println "tagged?: " ref-name " is tagged by " txid)
       txid)))
 
 (defn tag-ref [client ref-name txid]
@@ -145,30 +159,13 @@
   (doseq [r (keys (deref (.values txn)))]
     (zk/set-data (.client txn) (.getName r) (data/to-bytes 0) -1)))
 
-(defn try-write-lock [txn ref]
-  (if (.tryLock (.writeLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
-    (do (println "try-write-lock: locking ref: " (.getName ref))
-      (swap! (.locked txn) conj ref))
-    (do (println "try-write-lock: timeout")
-        (throw retryex))))
-
-(defn unlock-refs [txn]
-  (doseq [r (deref (.locked txn))]
-    (println "unlock-refs: unlocking ref: " (.getName r))
-    (.unlock (.writeLock (.lock r))))
-  (reset! (.locked txn) #{}))
 
 (defn process-commutes [txn]
   ;;TODO
   nil)
 
 (defn process-sets [txn]
-  (doseq [r (deref (.sets txn))]
-    (when-let [commit-point (get-committed-point-before (.client txn)
-                                                      (.getName r)
-                                                      (deref (.readPoint txn)))]
-      (do (println "process-sets: " (.getName r) commit-point ", state:" (.getState (.refState r) commit-point))
-          (.getState (.refState r) commit-point)))))
+  )
 
 (defn validate [validator value]
   (when (and validator (not (validator value)))
@@ -182,24 +179,25 @@
 (defn process-values [txn]
   (let [values (deref (.values txn))]
    (doseq [r (keys values)]
-     (locks/if-lock-with-timeout (.writeLock (.lock r)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
-       (do (set-commit-point (.client txn) (.getName r) (deref (.readPoint txn)) (deref (.commitPoint txn)))
-           (.setState (.refState r) (get values r) (str (deref (.readPoint txn)) "-" (deref (.commitPoint txn)))))
-       (do (println "process-values: retryex lock timeout")
-           (throw retryex))))))
+     (set-commit-point (.client txn) (.getName r) (deref (.readPoint txn)) (deref (.commitPoint txn)))
+     (.setState (.refState r) (get values r) (str (deref (.readPoint txn)) "-" (deref (.commitPoint txn)))))))
 
 (defn barge-time-elapsed? [txn]
   (> (- (System/nanoTime) (deref (.startTime txn)))
      BARGE-WAIT-NANOS))
 
 (defn barge [txn barged-txid]
-  (println "barge: barge-time-elapsed? " (barge-time-elapsed? txn))
-  (println "barge: readpoint " (util/extract-id (deref (.txid txn))))
-  (println "barge: other readpoint "  (util/extract-id barged-txid))
-  (println "barge: other txn running?" (current-state? (.client txn) barged-txid RUNNING))
+  ;(println "barge: barge-time-elapsed? " (barge-time-elapsed? txn))
+  ;(println "barge: readpoint " (util/extract-id (deref (.txid txn))))
+  ;(println "barge: other readpoint "  (util/extract-id barged-txid))
+  ;(println "barge: other txn running?" (current-state? (.client txn) barged-txid RUNNING))
   (and (barge-time-elapsed? txn)
        (< (util/extract-id (deref (.txid txn))) (util/extract-id barged-txid))
-       (update-state (.client txn) barged-txid RUNNING KILLED)))
+       ;(update-state (.client txn) barged-txid RUNNING KILLED)
+       )
+  ;; always fail
+  false
+  )
 
 (defn block-and-bail [txn]
   (.await (.latch txn) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
@@ -207,22 +205,27 @@
   (throw retryex))
 
 (defn lock-ref [txn ref]
-  (locks/if-lock-with-timeout (.writeLock (.lock ref)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
-    (do
-      ;;(println "lock-ref: locking ref: " (.getName ref))
-      ;;(swap! (.locked txn) conj ref)
+  (locks/with-lock (.writeLock (.lock ref))
+    (println "lock-ref: locking ref: " (deref (.txid txn)) (.getName ref) "lock requestNode: " (.requestNode (.writeLock (.lock ref))))
+    ;;(swap! (.locked txn) conj ref)
+    (.sync (.client txn) (str "/stm/history") nil nil)
+    (.sync (.client txn) (str (.getName ref) "/history") nil nil)
+    (let [last-committing-point (get-committing-point (.client txn) (.getName ref))]
+      (println "lock-ref: last-committing-point: " last-committing-point)
       (if (or (not (get-history (.client txn) (.getName ref)))
-              (get-committed-point-before (.client txn) (.getName ref) (deref (.readPoint txn))))
-       (do
-         (when-let [other-txid (tagged? (.client txn) (.getName ref))]
-           (when (and (not= (deref (.txid txn)) other-txid)
-                      (not (barge txn other-txid)))
-             (block-and-bail txn)))
-         (tag-ref (.client txn) (.getName ref) (deref (.txid txn))))
-       (do (println "lock-ref: no commit point before read point")
-           (throw retryex))))
-    (do (println "lock-ref: lock timeout")
-        (throw retryex))))
+              (>= (util/extract-id (deref (.readPoint txn)))
+                  (util/extract-id last-committing-point)))
+        (do
+          (println "lock-ref: checking for tag on ref..." (.getName ref))
+          (when-let [other-txid (tagged? (.client txn) (.getName ref))]
+            (do (println "lock-ref: tag found, checking its status")
+                (when (not= (deref (.txid txn)) other-txid)
+                  (do (println "lock-ref: retryex " (deref (.txid txn)) " could not tag ref " (.getName ref) " already tagged by " other-txid)
+                      (block-and-bail txn)))))
+          (do (println "tag-ref: about to tag ref")
+              (tag-ref (.client txn) (.getName ref) (deref (.txid txn)))))
+        (do (println "lock-ref: no commit point before read point")
+            (throw retryex))))))
 
 (defn stop [txn]
   (when-not (current-state? (.client txn) (deref (.txid txn)) COMMITTED)
@@ -232,7 +235,7 @@
   (.clear (.commutes txn))
   (.countDown (.latch txn)))
 
-(deftype LockingTransaction [returnValue client txid startTime readPoint commitPoint
+(deftype LockingTransaction [returnValue client txid startPoint startTime readPoint commitPoint
                              values sets commutes ensures locked latch]
 
   Transaction
@@ -240,11 +243,12 @@
   (doGet [this ref]
     (if (current-state? client @txid RUNNING COMMITTING)
       (or (get @values ref)
-          (if-let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
-            (do (println "doGet: commit-point: " (.getName ref) commit-point)
-                (.getState (.refState ref) commit-point))
-            (do (println "doGet: no commit point before read-point")
-                (throw retryex))))
+          (do (.sync (.client this) (str (.getName ref) "/history") nil nil)
+              (if-let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
+                (do (println "doGet: " @txid " prev-commit-point: " (.getName ref) commit-point ", value: " (.getState (.refState ref) commit-point))
+                    (.getState (.refState ref) commit-point))
+                (do (println "doGet: no commit point before read-point")
+                    (throw retryex)))))
       (do (println "doGet: transaction not running")
           (throw retryex))))
 
@@ -252,8 +256,10 @@
     (if (current-state? client @txid RUNNING COMMITTING)
       (do
         (when-not (contains? @sets ref)
-          (swap! sets conj ref)
-          (lock-ref this ref))
+          (lock-ref this ref)
+          (println "doSet: adding ref to sets: " @txid (.getName ref) value)
+          (swap! sets conj ref))
+        (println "doSet: adding value to values: " @txid (.getName ref) value)
         (swap! values assoc ref value)
         value)
       (do (println "doSet: transaction not running")
@@ -273,8 +279,10 @@
         (do
           (try
             (reset! readPoint (extract-point (next-point client)))
+            (println "loop(" retry-count "): readPoint: " @readPoint)
             (reset! txid @readPoint)
             (when (zero? retry-count)
+              (reset! startPoint @readPoint)
               (reset! startTime (System/nanoTime)))
             (update-state client @txid RUNNING)
             ;; f is user defined, and potentially long running
@@ -282,8 +290,8 @@
             ;; once f has successfully run, begin the commit process
             (when (update-state client @txid RUNNING COMMITTING)
               (println "COMMITTING: " @txid)
-              (process-commutes this) ;; TODO
-              (process-sets this)
+              ;(process-commutes this) ;; TODO
+              ;(process-sets this)
               (validate-values this)
               (reset! commitPoint (extract-point (next-point client)))
               (process-values this)
@@ -309,6 +317,7 @@
         (LockingTransaction. (atom nil)         ;; returnValue
                              client             ;; client
                              (atom nil)         ;; txid
+                             (atom nil)         ;; startPoint
                              (atom nil)         ;; startTime
                              (atom nil)         ;; readPoint
                              (atom nil)         ;; commitPoint
@@ -470,13 +479,14 @@
 
 
   ;; concurrency test
-  (def a (zk-ref client "/a" 0))
-  (def b (zk-ref client "/b" 0))
+  (def a (zk-ref client "/aaal" 0))
+  (def b (zk-ref client "/baal" 0))
   (doall
-   (repeatedly 5
+   (repeatedly 6
                (fn [] (future
-                        (txn stm
+                        (try (txn client
                              (alter!! a inc)
-                             (alter!! b inc))))))
+                             (alter!! b inc))
+                             (catch Throwable e (.printStackTrace e)))))))
 
 )
