@@ -117,13 +117,12 @@
 (defn get-committing-point
   "Returns the last committed/commtting-point in the state of committing if it exists."
   ([client ref-name]
-     (let [history (util/sort-sequential-nodes > (get-history client ref-name))]
+     (when-let [history (util/sort-sequential-nodes > (get-history client ref-name))]
        (loop [[h & hs] history]
          (when-let [[txid commit-pt] (split-ref-commit-history h)]
-           (cond
-             (current-state? client txid COMMITTED) h
-             (current-state? client txid COMMITTING) h
-             :else (recur hs)))))))
+           (if (current-state? client txid COMMITTING COMMITTED)
+             h
+             (recur hs)))))))
 
 (defn get-committed-point-before
   "Gets the committed point before the given one."
@@ -145,10 +144,16 @@
       (println "tagged?: " ref-name " is tagged by " txid)
       txid)))
 
-(defn tag-ref [client ref-name txid]
-  (println "tag-ref: ref-name: " ref-name ", txid: " txid)
-  (zk/delete-children client (str ref-name "/txn"))
-  (zk/create client (str ref-name "/txn/" txid) :persistent? false))
+(defn tag-ref [txn ref]
+  (let [last-committing-point (get-committing-point (.client txn) (.getName ref))]
+    (println "tag-ref: ref-name: " (.getName ref) ", txid: " (deref (.txid txn)) ", last-committing-point: " last-committing-point)
+    (if (or (not last-committing-point)
+            (>= (util/extract-id (deref (.readPoint txn)))
+                (util/extract-id last-committing-point)))
+      (do (zk/delete-children (.client txn) (str (.getName ref) "/txn"))
+          (zk/create (.client txn) (str (.getName ref) "/txn/" (deref (.txid txn))) :persistent? false))
+      (do (println "tag-ref: no prior commiting point or committing point is after txn read-point: " (.txid txn) (.getName ref) ", last committing point: " last-committing-point ", read-point: " (.readPoint txn))
+          (throw retryex)))))
 
 (defn set-commit-point [client ref-name txid commit-point]
   (zk/create client (str ref-name "/history/" txid "-" commit-point)
@@ -206,26 +211,17 @@
 
 (defn lock-ref [txn ref]
   (locks/with-lock (.writeLock (.lock ref))
-    (println "lock-ref: locking ref: " (deref (.txid txn)) (.getName ref) "lock requestNode: " (.requestNode (.writeLock (.lock ref))))
-    ;;(swap! (.locked txn) conj ref)
     (.sync (.client txn) (str "/stm/history") nil nil)
     (.sync (.client txn) (str (.getName ref) "/history") nil nil)
-    (let [last-committing-point (get-committing-point (.client txn) (.getName ref))]
-      (println "lock-ref: last-committing-point: " last-committing-point)
-      (if (or (not (get-history (.client txn) (.getName ref)))
-              (>= (util/extract-id (deref (.readPoint txn)))
-                  (util/extract-id last-committing-point)))
-        (do
-          (println "lock-ref: checking for tag on ref..." (.getName ref))
-          (when-let [other-txid (tagged? (.client txn) (.getName ref))]
-            (do (println "lock-ref: tag found, checking its status")
-                (when (not= (deref (.txid txn)) other-txid)
-                  (do (println "lock-ref: retryex " (deref (.txid txn)) " could not tag ref " (.getName ref) " already tagged by " other-txid)
-                      (block-and-bail txn)))))
-          (do (println "tag-ref: about to tag ref")
-              (tag-ref (.client txn) (.getName ref) (deref (.txid txn)))))
-        (do (println "lock-ref: no commit point before read point")
-            (throw retryex))))))
+    (println "lock-ref: locking ref: " (deref (.txid txn)) (.getName ref) "lock requestNode: " (.requestNode (.writeLock (.lock ref))))
+    (println "lock-ref: checking for tag on ref..." (.getName ref))
+    (when-let [other-txid (tagged? (.client txn) (.getName ref))]
+      (println "lock-ref: tag found, checking its status")
+      (when (not= (deref (.txid txn)) other-txid)
+        (println "lock-ref: retryex " (deref (.txid txn)) " could not tag ref " (.getName ref) " already tagged by " other-txid)
+        (block-and-bail txn)))
+    (println "tag-ref: about to tag ref")
+    (tag-ref txn ref)))
 
 (defn stop [txn]
   (when-not (current-state? (.client txn) (deref (.txid txn)) COMMITTED)
@@ -244,11 +240,14 @@
     (if (current-state? client @txid RUNNING COMMITTING)
       (or (get @values ref)
           (do (.sync (.client this) (str (.getName ref) "/history") nil nil)
-              (if-let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
-                (do (println "doGet: " @txid " prev-commit-point: " (.getName ref) commit-point ", value: " (.getState (.refState ref) commit-point))
-                    (.getState (.refState ref) commit-point))
-                (do (println "doGet: no commit point before read-point")
-                    (throw retryex)))))
+              (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)
+                    committing-point (get-committing-point client (.getName ref))]
+                (if (or (not committing-point)
+                        (= commit-point committing-point))
+                  (do (println "doGet: " @txid " prev-commit-point: " (.getName ref) commit-point ", value: " (.getState (.refState ref) commit-point))
+                      (.getState (.refState ref) commit-point))
+                  (do (println "doGet: no commit point before read-point")
+                      (throw retryex))))))
       (do (println "doGet: transaction not running")
           (throw retryex))))
 
@@ -479,8 +478,25 @@
 
 
   ;; concurrency test
+  (use 'avout.refs :reload-all)
+  (require '[zookeeper :as zk])
+
+  ;; connect to the stm
+  (def client (zk/connect "127.0.0.1"))
+
   (def a (zk-ref client "/aaal" 0))
   (def b (zk-ref client "/baal" 0))
+  (doall
+   (repeatedly 6
+               (fn [] (future
+                        (try (txn client
+                             (alter!! a inc)
+                             (alter!! b inc))
+                             (catch Throwable e (.printStackTrace e)))))))
+
+
+  (def a (zk-ref client "/aaal"))
+  (def b (zk-ref client "/baal"))
   (doall
    (repeatedly 6
                (fn [] (future
