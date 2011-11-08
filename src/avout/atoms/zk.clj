@@ -1,25 +1,16 @@
 (ns avout.atoms.zk
   (:use avout.atoms)
   (:require [zookeeper :as zk]
-            [zookeeper.data :as data]))
-
-(defn serialize-form
-  "Serializes a Clojure form to a byte-array."
-  ([form]
-     (data/to-bytes (pr-str form))))
-
-(defn deserialize-form
-  "Deserializes a byte-array to a Clojure form."
-  ([form]
-     (read-string (data/to-string form))))
+            [zookeeper.data :as data]
+            [avout.util :as util]))
 
 (deftype ZKAtomState [client dataNode]
   AtomState
   (getState [this]
     (let [{:keys [data stat]} (zk/data client dataNode)]
-      (deserialize-form data)))
+      (util/deserialize-form data)))
 
-  (setState [this new-value] (zk/set-data client dataNode (serialize-form new-value) -1)))
+  (setState [this new-value] (zk/set-data client dataNode (util/serialize-form new-value) -1)))
 
 (defn zk-atom
   ([client name init-value & {:keys [validator]}]
