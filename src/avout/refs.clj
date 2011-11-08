@@ -114,6 +114,17 @@
              h
              (recur hs)))))))
 
+(defn behind-committing-point?
+  "Returns true when the given txn's read-point is behind either a committed or committing point."
+  ([ref point]
+     (when-let [history (util/sort-sequential-nodes > (get-history (.client ref) (.getName ref)))]
+       (loop [[h & hs] history]
+         (when-let [[txid commit-pt] (split-ref-commit-history h)]
+           (if (current-state? (.client ref) txid COMMITTING COMMITTED)
+             (do (println "behind-committing-point? point=" point ", commit-pt=" commit-pt ": " (> (util/extract-id commit-pt) (util/extract-id point)))
+                 (> (util/extract-id commit-pt) (util/extract-id point)))
+             (recur hs)))))))
+
 (defn get-committing-point
   "Returns the last committed/commtting-point in the state of committing if it exists."
   ([client ref-name]
@@ -145,15 +156,11 @@
       txid)))
 
 (defn tag-ref [txn ref]
-  (let [last-committing-point (get-committing-point (.client txn) (.getName ref))]
-    (println "tag-ref: ref-name: " (.getName ref) ", txid: " (deref (.txid txn)) ", last-committing-point: " last-committing-point)
-    (if (or (not last-committing-point)
-            (>= (util/extract-id (deref (.readPoint txn)))
-                (util/extract-id last-committing-point)))
-      (do (zk/delete-children (.client txn) (str (.getName ref) "/txn"))
-          (zk/create (.client txn) (str (.getName ref) "/txn/" (deref (.txid txn))) :persistent? false))
-      (do (println "tag-ref: no prior commiting point or committing point is after txn read-point: " (.txid txn) (.getName ref) ", last committing point: " last-committing-point ", read-point: " (.readPoint txn))
-          (throw retryex)))))
+  (if (behind-committing-point? ref (deref (.readPoint txn)))
+    (throw retryex)
+    (do
+      (zk/delete-children (.client txn) (str (.getName ref) "/txn"))
+      (zk/create (.client txn) (str (.getName ref) "/txn/" (deref (.txid txn))) :persistent? false))))
 
 (defn set-commit-point [client ref-name txid commit-point]
   (zk/create client (str ref-name "/history/" txid "-" commit-point)
@@ -210,9 +217,9 @@
   (throw retryex))
 
 (defn lock-ref [txn ref]
+  (.sync (.client txn) (str "/stm/history") nil nil)
+  (.sync (.client txn) (str (.getName ref) "/history") nil nil)
   (locks/with-lock (.writeLock (.lock ref))
-    (.sync (.client txn) (str "/stm/history") nil nil)
-    (.sync (.client txn) (str (.getName ref) "/history") nil nil)
     (println "lock-ref: locking ref: " (deref (.txid txn)) (.getName ref) "lock requestNode: " (.requestNode (.writeLock (.lock ref))))
     (println "lock-ref: checking for tag on ref..." (.getName ref))
     (when-let [other-txid (tagged? (.client txn) (.getName ref))]
@@ -231,6 +238,7 @@
   (.clear (.commutes txn))
   (.countDown (.latch txn)))
 
+
 (deftype LockingTransaction [returnValue client txid startPoint startTime readPoint commitPoint
                              values sets commutes ensures locked latch]
 
@@ -240,14 +248,12 @@
     (if (current-state? client @txid RUNNING COMMITTING)
       (or (get @values ref)
           (do (.sync (.client this) (str (.getName ref) "/history") nil nil)
-              (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)
-                    committing-point (get-committing-point client (.getName ref))]
-                (if (or (not committing-point)
-                        (= commit-point committing-point))
+              (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
+                (if (behind-committing-point? ref commit-point)
+                  (do (println "doGet: retryex the current commit point is behind a committing point")
+                      (throw retryex))
                   (do (println "doGet: " @txid " prev-commit-point: " (.getName ref) commit-point ", value: " (.getState (.refState ref) commit-point))
-                      (.getState (.refState ref) commit-point))
-                  (do (println "doGet: no commit point before read-point")
-                      (throw retryex))))))
+                      (.getState (.refState ref) commit-point))))))
       (do (println "doGet: transaction not running")
           (throw retryex))))
 
