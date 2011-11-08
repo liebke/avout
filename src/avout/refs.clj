@@ -179,24 +179,20 @@
   (let [values (deref (.values txn))]
    (doseq [r (keys values)]
      (write-commit-point txn r)
-     (.setState (.refState r) (get values r) (str (deref (.readPoint txn)) "-" (deref (.commitPoint txn)))))))
+     (.setState (.refState r) (get values r) (str (deref (.txid txn)) "-" (deref (.commitPoint txn)))))))
 
 (defn barge-time-elapsed? [txn]
   (> (- (System/nanoTime) (deref (.startTime txn)))
      BARGE-WAIT-NANOS))
 
-(defn barge [txn barged-txid]
+(defn barge [txn tagged-txid]
   ;(println "barge: barge-time-elapsed? " (barge-time-elapsed? txn))
   ;(println "barge: readpoint " (util/extract-id (deref (.txid txn))))
   ;(println "barge: other readpoint "  (util/extract-id barged-txid))
   ;(println "barge: other txn running?" (current-state? (.client txn) barged-txid RUNNING))
   (and (barge-time-elapsed? txn)
-       (< (util/extract-id (deref (.txid txn))) (util/extract-id barged-txid))
-       ;(update-state (.client txn) barged-txid RUNNING KILLED)
-       )
-  ;; always fail
-  false
-  )
+       (< (util/extract-id (deref (.txid txn))) (util/extract-id tagged-txid))
+       (update-state (.client txn) tagged-txid RUNNING KILLED)))
 
 (defn block-and-bail [txn]
   (.await (.latch txn) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
@@ -209,10 +205,11 @@
   (locks/with-lock (.writeLock (.lock ref))
     (println "lock-ref: locking ref: " (deref (.txid txn)) (.getName ref) "lock requestNode: " (.requestNode (.writeLock (.lock ref))))
     (println "lock-ref: checking for tag on ref..." (.getName ref))
-    (when-let [other-txid (tagged? (.client txn) (.getName ref))]
+    (when-let [tagged-txid (tagged? (.client txn) (.getName ref))]
       (println "lock-ref: tag found, checking its status")
-      (when (not= (deref (.txid txn)) other-txid)
-        (println "lock-ref: retryex " (deref (.txid txn)) " could not tag ref " (.getName ref) " already tagged by " other-txid)
+      (when (and (not= (deref (.txid txn)) tagged-txid)
+                 (not (barge txn tagged-txid)))
+        (println "lock-ref: retryex " (deref (.txid txn)) " could not tag ref " (.getName ref) " already tagged by " tagged-txid)
         (block-and-bail txn)))
     (println "tag-ref: about to tag ref")
     (tag-ref txn ref)))
@@ -272,8 +269,8 @@
           (try
             (reset! readPoint (extract-point (next-point client)))
             (println "loop(" retry-count "): readPoint: " @readPoint)
-            (reset! txid @readPoint)
             (when (zero? retry-count)
+              (reset! txid @readPoint)
               (reset! startPoint @readPoint)
               (reset! startTime (System/nanoTime)))
             (update-state client @txid RUNNING)
