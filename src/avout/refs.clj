@@ -31,9 +31,8 @@
 
 ;; implementation
 
-(def local-transaction (ThreadLocal.))
-
 (def ^:dynamic *stm-node* "/stm")
+
 (def HISTORY "/history")
 (def TXN "/txn")
 (def PT-PREFIX "t-")
@@ -162,12 +161,6 @@
     (doseq [r (keys values)]
       (validate (deref (.validator r)) (get values r)))))
 
-(defn process-values [txn]
-  (let [values (deref (.values txn))]
-   (doseq [r (keys values)]
-     (write-commit-point txn r)
-     (.setState (.refState r) (get values r) (str (deref (.txid txn)) "-" (deref (.commitPoint txn)))))))
-
 (defn barge-time-elapsed? [txn]
   (> (- (System/nanoTime) (deref (.startTime txn)))
      BARGE-WAIT-NANOS))
@@ -204,6 +197,12 @@
         (block-and-bail txn)))
     (tag-ref txn ref)))
 
+(defn update-values [txn]
+  (let [values (deref (.values txn))]
+   (doseq [r (keys values)]
+     (write-commit-point txn r)
+     (.setState (.refState r) (get values r) (str (deref (.txid txn)) "-" (deref (.commitPoint txn)))))))
+
 (defn stop [txn]
   (when-not (current-state? (.client txn) (deref (.txid txn)) COMMITTED)
     (update-state (.client txn) (deref (.txid txn)) RETRY))
@@ -212,13 +211,17 @@
   (.clear (.commutes txn))
   (.countDown (deref (.latch txn))))
 
-(deftype LockingTransaction [returnValue client txid startPoint startTime readPoint commitPoint
+(defn running? [txn]
+  (current-state? (.client txn) (deref (.txid txn)) RUNNING COMMITTING))
+
+(deftype LockingTransaction [returnValue client txid startPoint
+                             startTime readPoint commitPoint
                              values sets commutes ensures latch]
 
   Transaction
 
   (doGet [this ref]
-    (if (current-state? client @txid RUNNING COMMITTING)
+    (if (running? this)
       (or (get @values ref)
           (do (.sync (.client this) (str (.getName ref) HISTORY) nil nil)
               (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
@@ -228,7 +231,7 @@
       (throw retryex)))
 
   (doSet [this ref value]
-    (if (current-state? client @txid RUNNING COMMITTING)
+    (if (running? this)
       (do
         (when-not (contains? @sets ref)
           (try-tag this ref)
@@ -259,12 +262,11 @@
             (update-state client @txid RUNNING)
             ;; f is user defined, and potentially long running
             (reset! returnValue (f))
-            ;; once f has successfully run, begin the commit process
             (when (update-state client @txid RUNNING COMMITTING)
               ;(process-commutes this) ;; TODO
               (validate-values this)
               (reset! commitPoint (next-point client))
-              (process-values this)
+              (update-values this)
               (trigger-watches this)
               (update-state client @txid COMMITTED))
             (catch Error e
@@ -276,6 +278,8 @@
             (recur (inc retry-count))))
         (throw (RuntimeException. "Transaction failed after reaching retry limit"))))
     @returnValue))
+
+(def local-transaction (ThreadLocal.))
 
 (defn create-local-transaction [client]
   (.set local-transaction
@@ -294,19 +298,15 @@
                              )))
 
 (defn get-local-transaction [client]
-  (or
-   (.get local-transaction)
-   (do (create-local-transaction client)
-       (.get local-transaction))))
+  (or (.get local-transaction)
+      (do (create-local-transaction client)
+          (.get local-transaction))))
 
 (defn run-in-transaction [client f]
   (.runInTransaction (get-local-transaction client) f))
 
 
 ;; distributed reference implementation
-
-(defn running? [txn]
-  (current-state? (.client txn) (deref (.txid txn)) RUNNING COMMITTING))
 
 (deftype DistributedReference [client nodeName refState validator watches lock]
   TransactionReference
