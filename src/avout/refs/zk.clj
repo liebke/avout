@@ -2,6 +2,7 @@
   (:use avout.refs)
   (:require [zookeeper :as zk]
             [zookeeper.data :as data]
+            [avout.transaction :as tx]
             [avout.util :as util]))
 
 ;; ZK data implementation
@@ -11,17 +12,17 @@
   (getRefName [this] name)
 
   (getState [this point]
-    (let [{:keys [data stat]} (zk/data client (str name HISTORY NODE-DELIM point))]
+    (let [{:keys [data stat]} (zk/data client (str name tx/HISTORY tx/NODE-DELIM point))]
       (util/deserialize-form data)))
 
   (setState [this value point]
-    (zk/set-data client (str name HISTORY NODE-DELIM point) (util/serialize-form value) -1)))
+    (zk/set-data client (str name tx/HISTORY tx/NODE-DELIM point) (util/serialize-form value) -1)))
 
 (defn zk-ref
   ([client name init-value & {:keys [validator]}]
      (let [r (doto (distributed-ref client name (ZKRefState. client name))
                (set-validator! validator))]
-       (txn client (ref-set!! r init-value))
+       (dosync!! client (ref-set!! r init-value))
        r))
   ([client name]
      ;; for connecting to an existing ref only
@@ -39,7 +40,7 @@
   (def b (zk-ref client "/b" 0))
   @a
   @b
-  (txn client
+  (dosync!! client
     (alter!! a inc)
     (alter!! b #(+ @a %)))
 
@@ -56,7 +57,7 @@
   (def a (zk-ref stm "/a"))
   (def b (zk-ref stm "/b"))
 
-  (txn stm
+  (dosync!! stm
     (alter!! a inc)
     (alter!! b #(+ @a %)))
 
@@ -76,20 +77,35 @@
   (doall
    (repeatedly 6
                (fn [] (future
-                        (try (txn client
-                             (alter!! a inc)
-                             (alter!! b inc))
-                             (catch Throwable e (.printStackTrace e)))))))
+                        (try
+                          (dosync!! client
+                            (alter!! a inc)
+                            (alter!! b inc))
+                          (catch Throwable e (.printStackTrace e)))))))
   [@a @b]
+
+
+  (def c (zk-ref client "/c" 0))
+  (def d (zk-ref client "/d" []))
+  (doall
+   (repeatedly 6
+               (fn [] (future
+                        (try
+                          (dosync!! client
+                            (alter!! d conj (alter!! c inc)))
+                          (catch Throwable e (.printStackTrace e)))))))
+  [@c @d]
+
 
   (def a (zk-ref client "/aaal"))
   (def b (zk-ref client "/baal"))
   (doall
    (repeatedly 6
                (fn [] (future
-                        (try (txn client
-                             (alter!! a inc)
-                             (alter!! b inc))
-                             (catch Throwable e (.printStackTrace e)))))))
+                        (try
+                          (dosync!! client
+                            (alter!! a inc)
+                            (alter!! b inc))
+                          (catch Throwable e (.printStackTrace e)))))))
 
 )
