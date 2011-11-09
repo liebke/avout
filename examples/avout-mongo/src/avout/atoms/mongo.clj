@@ -1,7 +1,6 @@
 (ns avout.atoms.mongo
   (:require [avout.atoms :as atoms]
-            [somnium.congomongo :as mongo]
-            [avout.locks :as locks])
+            [somnium.congomongo :as mongo])
   (:import (avout.atoms AtomState)))
 
 (deftype MongoAtomState [conn name]
