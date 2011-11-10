@@ -11,8 +11,6 @@
   ReferenceState
   (initState [this] nil)
 
-  (destroyState [this] nil)
-
   (getRefName [this] name)
 
   (getState [this point]
@@ -20,7 +18,11 @@
       (util/deserialize-form data)))
 
   (setState [this value point]
-    (zk/set-data client (str name tx/HISTORY tx/NODE-DELIM point) (util/serialize-form value) -1)))
+    (zk/set-data client (str name tx/HISTORY tx/NODE-DELIM point) (util/serialize-form value) -1))
+
+    (destroyState [this] nil)
+
+    (committed [this point] nil))
 
 (defn zk-ref
   ([client name init-value & {:keys [validator]}]

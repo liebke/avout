@@ -3,16 +3,12 @@
             [somnium.congomongo :as mongo])
   (:import (avout.atoms AtomState)))
 
-(deftype MongoAtomState [conn name]
+(deftype MongoAtomState [conn name] ;; add reference _id field to type, so it doesn't have to be retrieved
   AtomState
   (initState [this]
     (mongo/with-mongo conn
       (or (mongo/fetch-one :atoms :where {:name name})
           (mongo/insert! :atoms {:name name}))))
-
-  (destroyState [this]
-    (mongo/with-mongo conn
-      (mongo/destroy! :atoms (mongo/fetch-one :atoms :where {:name name}))))
 
   (getState [this]
     (:value (mongo/with-mongo conn
@@ -21,7 +17,16 @@
   (setState [this new-value]
     (mongo/with-mongo conn
       (let [data (mongo/fetch-one :atoms :where {:name name})]
-        (mongo/update! :atoms data (assoc data :value new-value))))))
+        (mongo/update! :atoms data (assoc data :value new-value)))))
+
+  (destroyState [this]
+    (mongo/with-mongo conn
+      (mongo/destroy! :atoms (mongo/fetch-one :atoms :where {:name name}))))
+
+  (committed [this point]
+    (mongo/with-mongo conn
+      (let [data (mongo/fetch-one :atoms :where {:name name})]
+        (mongo/update! :atoms data (assoc data :committed true))))))
 
 (defn mongo-atom
   ([zk-client mongo-conn name init-value & {:keys [validator]}]

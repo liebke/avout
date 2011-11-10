@@ -28,7 +28,8 @@
   (getRefName [this] "Returns the ZooKeeper node name associated with this reference.")
   (setState [this value point] "Sets the transaction-value associated with the given clock point.")
   (getState [this point] "Returns the value associated with given clock point.")
-  (destroyState [this] "Used to destroy all the reference state associated with the object."))
+  (committed [this point] "A callback notification, to let the ReferenceState know that the point has been committed")
+  (destroyState [this] "Used to destroy all the reference state associated with the instance."))
 
 (defprotocol TransactionReference
   (initRef [this])
@@ -37,12 +38,14 @@
   (alterRef [this f args])
   (commuteRef [this f args])
   (ensureRef [this])
+  (getCache [this point])
+  (setCache [this point value])
   (destroyRef [this]))
 
 
 ;; distributed reference implementation
 
-(deftype DistributedReference [client nodeName refState validator watches lock]
+(deftype DistributedReference [client nodeName refState cache validator watches lock]
   TransactionReference
   (initRef [this]
     (tx/init-ref client nodeName)
@@ -58,17 +61,25 @@
     (let [t (tx/get-local-transaction client)]
       (if (tx/running? t)
         (.doSet t this value)
-        (throw (RuntimeException. "Must run set-ref!! within the txn macro")))))
+        (throw (RuntimeException. "Must run set-ref!! within the dosync!! macro")))))
 
   (alterRef [this f args]
     (let [t (tx/get-local-transaction client)]
       (if (tx/running? t)
         (.doSet t this (apply f (.doGet t this) args))
-        (throw (RuntimeException. "Must run set-ref!! within the txn macro")))))
+        (throw (RuntimeException. "Must run set-ref!! within the dosync!! macro")))))
 
   (commuteRef [this f args] (throw (UnsupportedOperationException.)))
 
   (ensureRef [this] (throw (UnsupportedOperationException.)))
+
+  (getCache [this point]
+    (get point @cache))
+
+  (setCache [this point value]
+    (reset! cache {point value})
+    value)
+
 
   IRef
   (deref [this]
@@ -98,8 +109,12 @@
   (getValidator [this] @validator))
 
 (defn distributed-ref [client name ref-state & {:keys [validator]}]
-  (doto (DistributedReference. client name ref-state
-                               (atom validator) (atom {})
+  (doto (DistributedReference. client
+                               name
+                               ref-state
+                               (atom {}) ;; cache
+                               (atom validator)
+                               (atom {}) ;; watchers
                                (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
     .initRef))
 

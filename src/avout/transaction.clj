@@ -203,7 +203,9 @@
   (let [values (deref (.values txn))]
    (doseq [r (keys values)]
      (write-commit-point txn r)
-     (.setState (.refState r) (get values r) (str (deref (.txid txn)) "-" (deref (.commitPoint txn)))))))
+     (let [ref-state (.refState r)
+           point (str (deref (.txid txn)) "-" (deref (.commitPoint txn)))]
+       (.setState (.refState r) (.setCache r point (get values r)) point)))))
 
 (defn stop [txn]
   (when-not (current-state? (.client txn) (deref (.txid txn)) COMMITTED)
@@ -215,6 +217,12 @@
 
 (defn running? [txn]
   (current-state? (.client txn) (deref (.txid txn)) RUNNING COMMITTING))
+
+;; Should committment notifications be sent ReferenceState instances?
+(defn send-commit-notifications [txn]
+  (let [values (deref (.values txn))]
+   (doseq [r (keys values)]
+     (.committed (.refState r) (str (deref (.txid txn)) "-" (deref (.commitPoint txn)))))))
 
 (deftype LockingTransaction [returnValue client txid startPoint
                              startTime readPoint commitPoint
@@ -228,7 +236,8 @@
               (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
                 (if (behind-committing-point? ref commit-point)
                   (block-and-bail this)
-                  (.getState (.refState ref) commit-point)))))
+                  (or (.getCache ref commit-point)
+                      (.setCache ref commit-point (.getState (.refState ref) commit-point)))))))
       (throw retryex)))
 
   (doSet [this ref value]
@@ -268,7 +277,9 @@
               (reset! commitPoint (next-point client))
               (update-values this)
               (trigger-watches this)
-              (update-state client @txid COMMITTED))
+              (update-state client @txid COMMITTED)
+              ;; should commit notifications to the ReferenceState be included?
+              (send-commit-notifications this))
             (catch Error e (when-not (retryex? e) (throw e)))
             (finally (stop this)))
           (when-not (current-state? client @txid COMMITTED)
