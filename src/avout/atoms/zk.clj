@@ -6,6 +6,12 @@
 
 (deftype ZKAtomState [client dataNode]
   AtomState
+  (initState [this]
+    (zk/create-all client dataNode))
+
+  (destroyState [this]
+    (zk/delete-all client dataNode))
+
   (getState [this]
     (let [{:keys [data stat]} (zk/data client dataNode)]
       (util/deserialize-form data)))
@@ -14,7 +20,7 @@
 
 (defn zk-atom
   ([client name init-value & {:keys [validator]}]
-     (doto (distributed-atom client name (ZKAtomState. client (zk/create-all client (str name "/data"))))
+     (doto (distributed-atom client name (ZKAtomState. client (str name "/data")))
        (set-validator! validator)
        (.reset init-value)))
   ([client name] ;; for connecting to an existing atom only

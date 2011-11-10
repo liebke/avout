@@ -9,6 +9,10 @@
 
 (deftype ZKRefState [client name]
   ReferenceState
+  (initState [this] nil)
+
+  (destroyState [this] nil)
+
   (getRefName [this] name)
 
   (getState [this point]

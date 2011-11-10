@@ -9,11 +9,15 @@
 
 (defprotocol AtomState
   "Protocol to implement when creating new types of distributed atoms."
+  (initState [this])
+  (destroyState [this])
   (getState [this])
   (setState [this value]))
 
 (defprotocol AtomReference
   "The mutation methods used by the clojure.lang.Atom class."
+  (initAtom [this])
+  (destroyAtom [this])
   (swap [this f] [this f args])
   (reset [this new-value])
   (compareAndSet [this old-value new-value]))
@@ -31,6 +35,12 @@
 
 (deftype DistributedAtom [client nodeName atomState validator watches lock]
   AtomReference
+  (initAtom [this]
+    (.initState atomState))
+
+  (destroyAtom [this]
+    (.destroyState atomState))
+
   (compareAndSet [this old-value new-value]
     (validate @validator new-value)
     (locks/with-lock (.writeLock lock)
@@ -64,8 +74,8 @@
   (addWatch [this key callback]
     (let [watcher (fn watcher-fn [event]
                     (when (contains? @watches key)
-                      (when (= :NodeStateChanged (:event-type event))
-                       (let [new-value (.deref this)]
+                      (when (= :NodeDataChanged (:event-type event))
+                        (let [new-value (.deref this)]
                          (callback key this nil new-value)))
                       (zk/exists client nodeName :watcher watcher-fn)))]
       (swap! watches assoc key watcher)
@@ -82,9 +92,10 @@
 
 (defn distributed-atom [client name atom-data & {:keys [validator]}]
   (zk/create client name :persistent? true)
-  (DistributedAtom. client name atom-data
-                    (atom validator) (atom {})
-                    (locks/distributed-read-write-lock client :lock-node (str name "/lock"))))
+  (doto (DistributedAtom. client name atom-data
+                          (atom validator) (atom {})
+                          (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
+    .initAtom))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

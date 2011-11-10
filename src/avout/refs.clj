@@ -24,22 +24,34 @@
 ;; protocols
 
 (defprotocol ReferenceState
+  (initState [this] "Used to initialize the reference state container if necessary")
   (getRefName [this] "Returns the ZooKeeper node name associated with this reference.")
   (setState [this value point] "Sets the transaction-value associated with the given clock point.")
-  (getState [this point] "Returns the value associated with given clock point."))
+  (getState [this point] "Returns the value associated with given clock point.")
+  (destroyState [this] "Used to destroy all the reference state associated with the object."))
 
 (defprotocol TransactionReference
+  (initRef [this])
   (getName [this])
   (setRef [this value])
   (alterRef [this f args])
   (commuteRef [this f args])
-  (ensureRef [this]))
+  (ensureRef [this])
+  (destroyRef [this]))
 
 
 ;; distributed reference implementation
 
 (deftype DistributedReference [client nodeName refState validator watches lock]
   TransactionReference
+  (initRef [this]
+    (tx/init-ref client nodeName)
+    (.initState refState))
+
+  (destroyRef [this]
+    (zk/delete-all client nodeName)
+    (.destroyState refState))
+
   (getName [this] nodeName)
 
   (setRef [this value]
@@ -86,8 +98,8 @@
   (getValidator [this] @validator))
 
 (defn distributed-ref [client name ref-state & {:keys [validator]}]
-  (tx/init-ref client name)
-  (DistributedReference. client name ref-state
-                         (atom validator) (atom {})
-                         (locks/distributed-read-write-lock client :lock-node (str name "/lock"))))
+  (doto (DistributedReference. client name ref-state
+                               (atom validator) (atom {})
+                               (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
+    .initRef))
 

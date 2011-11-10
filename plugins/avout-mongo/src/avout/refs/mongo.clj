@@ -5,6 +5,8 @@
 
 (deftype MongoRefState [conn name]
   ReferenceState
+  (initState [this])
+
   (getRefName [this] name)
 
   (getState [this point]
@@ -15,7 +17,11 @@
     (let [data (if value
                  {:name name :value value :point point}
                  {:name name :point point})]
-      (mongo/with-mongo conn (mongo/insert! :refs data)))))
+      (mongo/with-mongo conn (mongo/insert! :refs data))))
+
+  (destroyState [this]
+    (mongo/with-mongo conn
+      (mongo/destroy! :refs :where {:name name}))))
 
 (defn mongo-ref
   ([zk-client mongo-conn name init-value & {:keys [validator]}]
@@ -64,6 +70,7 @@
   (use 'avout.refs.zk)
   (def r2 (zk-ref zk-client "/r2" []))
   (def r3 (mongo-ref zk-client mongo-conn "/r3" 1 :validator pos?))
+
   (dosync!! zk-client
     (alter!! r3 inc)
     (alter!! r2 conj @r3))

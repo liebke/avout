@@ -5,22 +5,27 @@
 
 (deftype MongoAtomState [conn name]
   AtomState
+  (initState [this]
+    (mongo/with-mongo conn
+      (or (mongo/fetch-one :atoms :where {:name name})
+          (mongo/insert! :atoms {:name name}))))
+
+  (destroyState [this]
+    (mongo/with-mongo conn
+      (mongo/destroy! :atoms (mongo/fetch-one :atoms :where {:name name}))))
+
   (getState [this]
     (:value (mongo/with-mongo conn
               (mongo/fetch-one :atoms :where {:name name}))))
 
   (setState [this new-value]
-    (let [data (mongo/with-mongo conn (mongo/fetch-one :atoms :where {:name name}))]
-      (mongo/with-mongo conn
+    (mongo/with-mongo conn
+      (let [data (mongo/fetch-one :atoms :where {:name name})]
         (mongo/update! :atoms data (assoc data :value new-value))))))
 
 (defn mongo-atom
   ([zk-client mongo-conn name init-value & {:keys [validator]}]
-     (doto
-         (mongo/with-mongo mongo-conn
-           (or (mongo/fetch-one :atoms :where {:name name})
-               (mongo/insert! :atoms {:name name}))
-           (atoms/distributed-atom zk-client name (MongoAtomState. mongo-conn name)))
+     (doto (atoms/distributed-atom zk-client name (MongoAtomState. mongo-conn name))
        (set-validator! validator)
        (.reset init-value)))
   ([zk-client mongo-conn name]
