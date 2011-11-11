@@ -1,11 +1,11 @@
 (ns avout.atoms
+  (:use avout.state)
   (:require [zookeeper :as zk]
             [zookeeper.data :as data]
             [avout.locks :as locks])
   (:import (clojure.lang IRef)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; PROTOCOLS
+;; atom protocols
 
 (defprotocol AtomState
   "Protocol to implement when creating new types of distributed atoms."
@@ -18,12 +18,34 @@
   "The mutation methods used by the clojure.lang.Atom class."
   (initAtom [this])
   (destroyAtom [this])
+  (getName [this])
   (swap [this f] [this f args])
   (reset [this new-value])
   (compareAndSet [this old-value new-value]))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Versions of Clojure's Atom functions swap!, reset!, compare-and-set! for use with AtomReferences
+;; Built-in Clojure functions that work against IRef work with AtomReferences, including
+;; deref, the @ deref reader-macro, set-validator!, get-validator!, add-watch, and remove-watch
+
+(defn swap!!
+  "Cannot use standard swap! because Clojure expects a clojure.lang.Atom."
+  ([atom f & args] (.swap atom f args)))
+
+(defn reset!!
+  "Cannot use standard reset! because Clojure expects a clojure.lang.Atom."
+  ([atom new-value] (.reset atom new-value)))
+
+(defn compare-and-set!!
+  "Cannot use standard reset! because Clojure expects a clojure.lang.Atom."
+  ([atom old-value new-value] (.compareAndSet atom old-value new-value)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; DistributedAtom implementation
+
+(def DELIM "/")
+(def LOCK "/lock")
 
 (defn trigger-watchers
   [client node-name]
@@ -33,10 +55,18 @@
   (when (and validator (not (validator value)))
     (throw (IllegalStateException. "Invalid reference state"))))
 
-(deftype DistributedAtom [client nodeName atomState validator watches lock]
+(defn set-state [atom value]
+  ;; trigger cache invalidation watchers
+  (.setState (.atomState atom) (.setCache atom value)))
+
+(deftype DistributedAtom [client nodeName atomState cache validator watches lock]
   AtomReference
   (initAtom [this]
+    (zk/create-all client nodeName :persistent? true)
+    (.invalidateCache this)
     (.initState atomState))
+
+  (getName [this] nodeName)
 
   (destroyAtom [this]
     (.destroyState atomState))
@@ -44,8 +74,8 @@
   (compareAndSet [this old-value new-value]
     (validate @validator new-value)
     (locks/with-lock (.writeLock lock)
-      (if (= old-value (.getState atomState))
-        (do (.setState atomState new-value)
+      (if (= old-value (or (.getCache this) (.setCache this (.getState atomState))))
+        (do (set-state this new-value)
             (trigger-watchers client nodeName)
             true)
         false)))
@@ -54,21 +84,23 @@
 
   (swap [this f args]
     (locks/with-lock (.writeLock lock)
-      (let [new-value (apply f (.getState atomState) args)]
+      (let [new-value (apply f (or (.getCache this) (.setCache this (.getState atomState))) args)]
         (validate @validator new-value)
-        (.setState atomState new-value)
+        (set-state this new-value)
         (trigger-watchers client nodeName)
         new-value)))
 
   (reset [this new-value]
     (locks/with-lock (.writeLock lock)
       (validate @validator new-value)
-      (.setState atomState new-value)
+      (set-state this new-value)
       (trigger-watchers client nodeName)
       new-value))
 
   IRef
-  (deref [this] (.getState atomState))
+  (deref [this]
+    (or (.getCache this)
+        (.setCache this (.getState atomState))))
 
   ;; callback params: akey, aref, old-val, new-val, but old-val will always be nil
   (addWatch [this key callback]
@@ -88,30 +120,28 @@
 
   (setValidator [this f] (reset! validator f))
 
-  (getValidator [this] @validator))
+  (getValidator [this] @validator)
+
+
+  StateCache
+  (getCache [this]
+    (when (:valid @cache) (:value @cache)))
+
+  (setCache [this value]
+    (reset! cache {:valid true, :value value})
+    value)
+
+  (invalidateCache [this]
+    (zk/exists (.client this) (.getName this)
+               :watcher (fn [event] (.invalidateCache this)))
+    (swap! cache assoc :valid false)))
 
 (defn distributed-atom [client name atom-data & {:keys [validator]}]
-  (zk/create client name :persistent? true)
-  (doto (DistributedAtom. client name atom-data
-                          (atom validator) (atom {})
+  (doto (DistributedAtom. client
+                          name
+                          atom-data
+                          (atom {}) ;; cache
+                          (atom validator)
+                          (atom {})
                           (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
     .initAtom))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Versions of Clojure's Atom functions swap!, reset!, compare-and-set! for use with AtomReferences
-;; Built-in Clojure functions that work against IRef work with AtomReferences, including
-;; deref, the @ deref reader-macro, set-validator!, get-validator!, add-watch, and remove-watch
-
-(defn swap!!
-  "Cannot use standard swap! because Clojure expects a clojure.lang.Atom."
-  ([^avout.atoms.AtomReference atom f & args] (.swap atom f args)))
-
-(defn reset!!
-  "Cannot use standard reset! because Clojure expects a clojure.lang.Atom."
-  ([^avout.atoms.AtomReference atom new-value] (.reset atom new-value)))
-
-(defn compare-and-set!!
-  "Cannot use standard reset! because Clojure expects a clojure.lang.Atom."
-  ([^avout.atoms.AtomReference atom old-value new-value] (.compareAndSet atom old-value new-value)))
-

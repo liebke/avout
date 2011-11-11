@@ -21,12 +21,7 @@
 
   (destroyState [this]
     (mongo/with-mongo conn
-      (mongo/destroy! :atoms (mongo/fetch-one :atoms :where {:name name}))))
-
-  (committed [this point]
-    (mongo/with-mongo conn
-      (let [data (mongo/fetch-one :atoms :where {:name name})]
-        (mongo/update! :atoms data (assoc data :committed true))))))
+      (mongo/destroy! :atoms (mongo/fetch-one :atoms :where {:name name})))))
 
 (defn mongo-atom
   ([zk-client mongo-conn name init-value & {:keys [validator]}]

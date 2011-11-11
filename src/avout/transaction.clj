@@ -184,7 +184,8 @@
   (if (behind-committing-point? ref (deref (.readPoint txn)))
     (block-and-bail txn)
     (do (zk/delete-children (.client txn) (str (.getName ref) TXN))
-        (zk/create (.client txn) (str (.getName ref) TXN NODE-DELIM (deref (.txid txn))) :persistent? false))))
+        (zk/create (.client txn) (str (.getName ref) TXN NODE-DELIM (deref (.txid txn)))
+                   :persistent? false))))
 
 (defn sync-ref [ref]
   (.sync (.client ref) (str *stm-node* HISTORY) nil nil)
@@ -205,7 +206,7 @@
      (write-commit-point txn r)
      (let [ref-state (.refState r)
            point (str (deref (.txid txn)) "-" (deref (.commitPoint txn)))]
-       (.setState (.refState r) (.setCache r point (get values r)) point)))))
+       (.setState (.refState r) (get values r) point)))))
 
 (defn stop [txn]
   (when-not (current-state? (.client txn) (deref (.txid txn)) COMMITTED)
@@ -218,11 +219,10 @@
 (defn running? [txn]
   (current-state? (.client txn) (deref (.txid txn)) RUNNING COMMITTING))
 
-;; Should committment notifications be sent ReferenceState instances?
-(defn send-commit-notifications [txn]
+(defn update-caches [txn]
   (let [values (deref (.values txn))]
    (doseq [r (keys values)]
-     (.committed (.refState r) (str (deref (.txid txn)) "-" (deref (.commitPoint txn)))))))
+     (.setCache r (get values r)))))
 
 (deftype LockingTransaction [returnValue client txid startPoint
                              startTime readPoint commitPoint
@@ -232,12 +232,12 @@
   (doGet [this ref]
     (if (running? this)
       (or (get @values ref)
+          (.getCache ref)
           (do (sync-ref ref)
               (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
                 (if (behind-committing-point? ref commit-point)
                   (block-and-bail this)
-                  (or (.getCache ref commit-point)
-                      (.setCache ref commit-point (.getState (.refState ref) commit-point)))))))
+                  (.setCache ref (.getState (.refState ref) commit-point))))))
       (throw retryex)))
 
   (doSet [this ref value]
@@ -278,8 +278,7 @@
               (update-values this)
               (trigger-watches this)
               (update-state client @txid COMMITTED)
-              ;; should commit notifications to the ReferenceState be included?
-              (send-commit-notifications this))
+              (update-caches this))
             (catch Error e (when-not (retryex? e) (throw e)))
             (finally (stop this)))
           (when-not (current-state? client @txid COMMITTED)

@@ -14,15 +14,14 @@
   (getRefName [this] name)
 
   (getState [this point]
+    (println "RefState getState called " name point)
     (let [{:keys [data stat]} (zk/data client (str name tx/HISTORY tx/NODE-DELIM point))]
       (util/deserialize-form data)))
 
   (setState [this value point]
     (zk/set-data client (str name tx/HISTORY tx/NODE-DELIM point) (util/serialize-form value) -1))
 
-    (destroyState [this] nil)
-
-    (committed [this point] nil))
+    (destroyState [this] nil))
 
 (defn zk-ref
   ([client name init-value & {:keys [validator]}]
@@ -103,8 +102,8 @@
   [@c @d]
 
 
-  (def a (zk-ref client "/aaal"))
-  (def b (zk-ref client "/baal"))
+  (def a (zk-ref client "/a"))
+  (def b (zk-ref client "/b"))
   (doall
    (repeatedly 6
                (fn [] (future

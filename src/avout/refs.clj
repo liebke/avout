@@ -1,8 +1,29 @@
 (ns avout.refs
+  (:use avout.state)
   (:require [zookeeper :as zk]
             [avout.locks :as locks]
             [avout.transaction :as tx])
   (:import (clojure.lang IRef)))
+
+
+;; reference protocols
+
+(defprotocol ReferenceState
+  (initState [this] "Used to initialize the reference state container if necessary")
+  (getRefName [this] "Returns the ZooKeeper node name associated with this reference.")
+  (setState [this value point] "Sets the transaction-value associated with the given clock point.")
+  (getState [this point] "Returns the value associated with given clock point.")
+  (destroyState [this] "Used to destroy all the reference state associated with the instance."))
+
+(defprotocol TransactionReference
+  (initRef [this])
+  (getName [this])
+  (setRef [this value])
+  (alterRef [this f args])
+  (commuteRef [this f args])
+  (ensureRef [this])
+  (destroyRef [this]))
+
 
 ;; Distributed versions of Clojure's standard Ref functions
 
@@ -21,34 +42,13 @@
   ([ref f & args] (.alterRef ref f args)))
 
 
-;; protocols
-
-(defprotocol ReferenceState
-  (initState [this] "Used to initialize the reference state container if necessary")
-  (getRefName [this] "Returns the ZooKeeper node name associated with this reference.")
-  (setState [this value point] "Sets the transaction-value associated with the given clock point.")
-  (getState [this point] "Returns the value associated with given clock point.")
-  (committed [this point] "A callback notification, to let the ReferenceState know that the point has been committed")
-  (destroyState [this] "Used to destroy all the reference state associated with the instance."))
-
-(defprotocol TransactionReference
-  (initRef [this])
-  (getName [this])
-  (setRef [this value])
-  (alterRef [this f args])
-  (commuteRef [this f args])
-  (ensureRef [this])
-  (getCache [this point])
-  (setCache [this point value])
-  (destroyRef [this]))
-
-
 ;; distributed reference implementation
 
 (deftype DistributedReference [client nodeName refState cache validator watches lock]
   TransactionReference
   (initRef [this]
     (tx/init-ref client nodeName)
+    (.invalidateCache this) ;; sets initial watch
     (.initState refState))
 
   (destroyRef [this]
@@ -73,11 +73,18 @@
 
   (ensureRef [this] (throw (UnsupportedOperationException.)))
 
-  (getCache [this point]
-    (get point @cache))
 
-  (setCache [this point value]
-    (reset! cache {point value})
+  StateCache
+  (invalidateCache [this]
+    (zk/children client (str nodeName tx/TXN) :watcher (fn [event] (.invalidateCache this)))
+    (swap! cache assoc :valid false))
+
+  (getCache [this]
+    (when (:valid @cache)
+      (:value @cache)))
+
+  (setCache [this value]
+    (reset! cache {:valid true :value value})
     value)
 
 
@@ -86,7 +93,8 @@
     (let [t (tx/get-local-transaction client)]
       (if (tx/running? t)
         (.doGet t this)
-        (.getState refState (tx/get-last-committed-point client (.getName this))))))
+        (or (.getCache this)
+            (.setCache this (.getState refState (tx/get-last-committed-point client (.getName this))))))))
 
   ;; callback params: akey, aref, old-val, new-val, but old-val will always be nil
   (addWatch [this key callback]
