@@ -94,7 +94,8 @@
       (if (tx/running? t)
         (.doGet t this)
         (or (.getCache this)
-            (.setCache this (.getState refState (tx/get-last-committed-point client (.getName this))))))))
+            (when-let [commit-point (tx/get-last-committed-point client (.getName this))]
+              (.setCache this (.getState refState commit-point)))))))
 
   ;; callback params: akey, aref, old-val, new-val, but old-val will always be nil
   (addWatch [this key callback]

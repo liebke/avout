@@ -237,7 +237,7 @@
               (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
                 (if (behind-committing-point? ref commit-point)
                   (block-and-bail this)
-                  (.setCache ref (.getState (.refState ref) commit-point))))))
+                  (when commit-point (.setCache ref (.getState (.refState ref) commit-point)))))))
       (throw retryex)))
 
   (doSet [this ref value]

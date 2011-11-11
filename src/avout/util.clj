@@ -9,4 +9,4 @@
 (defn deserialize-form
   "Deserializes a byte-array to a Clojure form."
   ([form]
-     (read-string (data/to-string form))))
+     (when form (read-string (data/to-string form)))))
