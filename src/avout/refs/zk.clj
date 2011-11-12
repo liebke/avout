@@ -1,5 +1,5 @@
 (ns avout.refs.zk
-  (:use avout.refs)
+  (:use avout.state)
   (:require [zookeeper :as zk]
             [zookeeper.data :as data]
             [avout.transaction :as tx]
@@ -8,18 +8,22 @@
 ;; ZK data implementation
 
 (deftype ZKRefState [client name]
-  ReferenceState
-  (initState [this] nil)
 
-  (getRefName [this] name)
+  Identity
 
-  (getState [this point]
-    (println "RefState getState called " name point)
-    (let [{:keys [data stat]} (zk/data client (str name tx/HISTORY tx/NODE-DELIM point))]
+  (init [this] nil)
+
+  (getName [this] name)
+
+  (destroy [this] nil)
+
+  VersionedStateContainer
+
+  (getStateAt [this version]
+    (println "RefState getState called " name version)
+    (let [{:keys [data stat]} (zk/data client (str name tx/HISTORY tx/NODE-DELIM version))]
       (util/deserialize-form data)))
 
-  (setState [this value point]
-    (zk/set-data client (str name tx/HISTORY tx/NODE-DELIM point) (util/serialize-form value) -1))
-
-    (destroyState [this] nil))
+  (setStateAt [this value version]
+    (zk/set-data client (str name tx/HISTORY tx/NODE-DELIM version) (util/serialize-form value) -1)))
 

@@ -8,38 +8,30 @@
 
 ;; reference protocols
 
-(defprotocol ReferenceState
-  (initState [this] "Used to initialize the reference state container if necessary")
-  (getRefName [this] "Returns the ZooKeeper node name associated with this reference.")
-  (setState [this value point] "Sets the transaction-value associated with the given clock point.")
-  (getState [this point] "Returns the value associated with given clock point.")
-  (destroyState [this] "Used to destroy all the reference state associated with the instance."))
-
 (defprotocol TransactionReference
-  (initRef [this])
-  (getName [this])
+  (version [this])
   (setRef [this value])
   (alterRef [this f args])
   (commuteRef [this f args])
-  (ensureRef [this])
-  (destroyRef [this]))
+  (ensureRef [this]))
 
 
 ;; distributed reference implementation
 
 (deftype DistributedReference [client nodeName refState cache validator watches lock]
-  TransactionReference
-  (initRef [this]
+  Identity
+  (init [this]
     (tx/init-ref client nodeName)
     (.invalidateCache this) ;; sets initial watch
-    (.initState refState))
+    (.init refState))
 
-  (destroyRef [this]
+  (destroy [this]
     (zk/delete-all client nodeName)
-    (.destroyState refState))
+    (.destroy refState))
 
   (getName [this] nodeName)
 
+  TransactionReference
   (setRef [this value]
     (let [t (tx/get-local-transaction client)]
       (if (tx/running? t)
@@ -56,6 +48,11 @@
 
   (ensureRef [this] (throw (UnsupportedOperationException.)))
 
+  (version [this]
+    (let [t (tx/get-local-transaction client)]
+      (if (tx/running? t)
+        (tx/get-committed-point-before client (.getName ref) (.readPoint ref))
+        (tx/get-last-committed-point client (.getName this)))))
 
   StateCache
   (invalidateCache [this]
@@ -110,5 +107,5 @@
                                (atom validator)
                                (atom {}) ;; watchers
                                (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
-    .initRef))
+    .init))
 

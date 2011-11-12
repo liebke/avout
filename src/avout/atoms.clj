@@ -7,18 +7,8 @@
 
 ;; atom protocols
 
-(defprotocol AtomState
-  "Protocol to implement when creating new types of distributed atoms."
-  (initState [this])
-  (destroyState [this])
-  (getState [this])
-  (setState [this value]))
-
 (defprotocol AtomReference
   "The mutation methods used by the clojure.lang.Atom class."
-  (initAtom [this])
-  (destroyAtom [this])
-  (getName [this])
   (swap [this f] [this f args])
   (reset [this new-value])
   (compareAndSet [this old-value new-value]))
@@ -43,17 +33,18 @@
   (.setState (.atomState atom) (.setCache atom value)))
 
 (deftype DistributedAtom [client nodeName atomState cache validator watches lock]
-  AtomReference
-  (initAtom [this]
+  Identity
+  (init [this]
     (zk/create-all client nodeName :persistent? true)
     (.invalidateCache this)
-    (.initState atomState))
+    (.init atomState))
 
   (getName [this] nodeName)
 
-  (destroyAtom [this]
-    (.destroyState atomState))
+  (destroy [this]
+    (.destroy atomState))
 
+  AtomReference
   (compareAndSet [this old-value new-value]
     (validate @validator new-value)
     (locks/with-lock (.writeLock lock)
@@ -127,4 +118,4 @@
                           (atom validator)
                           (atom {})
                           (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
-    .initAtom))
+    .init))

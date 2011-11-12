@@ -10,24 +10,12 @@
 
 ;; protocols
 
-(defprotocol ReferenceState
-  (getRefName [this] "Returns the ZooKeeper node name associated with this reference.")
-  (setState [this value point] "Sets the transaction-value associated with the given clock point.")
-  (getState [this point] "Returns the value associated with given clock point."))
-
 (defprotocol Transaction
   (doGet [this ref])
   (doSet [this ref value])
   (doCommute [this f args])
   (doEnsure [this])
   (runInTransaction [this f]))
-
-(defprotocol TransactionReference
-  (getName [this])
-  (setRef [this value])
-  (alterRef [this f args])
-  (commuteRef [this f args])
-  (ensureRef [this]))
 
 ;; implementation
 
@@ -82,9 +70,9 @@
                  :persistent? true
                  :sequential? true))))
 
-(defn split-ref-commit-history [history-node]
-  (when history-node
-    (let [[_ txid _ commit-pt] (s/split history-node #"-")]
+(defn parse-version [version]
+  (when version
+    (let [[_ txid _ commit-pt] (s/split version #"-")]
       [(str PT-PREFIX txid) (str PT-PREFIX commit-pt)])))
 
 (defn point-node [point]
@@ -112,7 +100,7 @@
   ([client ref-name]
      (let [history (util/sort-sequential-nodes > (get-history client ref-name))]
        (loop [[h & hs] history]
-         (when-let [[txid commit-pt] (split-ref-commit-history h)]
+         (when-let [[txid commit-pt] (parse-version h)]
            (if (current-state? client txid COMMITTED)
              h
              (recur hs)))))))
@@ -123,7 +111,7 @@
      (let [history (util/sort-sequential-nodes > (get-history client ref-name))
            point-int (util/extract-id point)]
        (loop [[h & hs] history]
-         (when-let [[txid commit-pt] (split-ref-commit-history h)]
+         (when-let [[txid commit-pt] (parse-version h)]
            (if (and (<= (util/extract-id commit-pt) point-int)
                     (current-state? client txid COMMITTED))
              h
@@ -134,7 +122,7 @@
   ([ref point]
      (when-let [history (util/sort-sequential-nodes > (get-history (.client ref) (.getName ref)))]
        (loop [[h & hs] history]
-         (when-let [[txid commit-pt] (split-ref-commit-history h)]
+         (when-let [[txid commit-pt] (parse-version h)]
            (if (current-state? (.client ref) txid COMMITTING COMMITTED)
              (> (util/extract-id commit-pt) (util/extract-id point))
              (recur hs)))))))
@@ -206,7 +194,7 @@
      (write-commit-point txn r)
      (let [ref-state (.refState r)
            point (str (deref (.txid txn)) "-" (deref (.commitPoint txn)))]
-       (.setState (.refState r) (get values r) point)))))
+       (.setStateAt (.refState r) (get values r) point)))))
 
 (defn stop [txn]
   (when-not (current-state? (.client txn) (deref (.txid txn)) COMMITTED)
@@ -237,7 +225,7 @@
               (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
                 (if (behind-committing-point? ref commit-point)
                   (block-and-bail this)
-                  (when commit-point (.setCache ref (.getState (.refState ref) commit-point)))))))
+                  (when commit-point (.setCache ref (.getStateAt (.refState ref) commit-point)))))))
       (throw retryex)))
 
   (doSet [this ref value]

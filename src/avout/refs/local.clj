@@ -1,22 +1,23 @@
 (ns avout.refs.local
-  (:use avout.refs)
+  (:use avout.state)
   (:require [zookeeper :as zk]
             [avout.transaction :as tx]
             [avout.util :as util]))
 
 
 (deftype LocalRefState [client name state]
-  ReferenceState
-  (initState [this] nil)
+  Identity
+  (init [this] nil)
 
-  (getRefName [this] name)
+  (getName [this] name)
 
-  (getState [this point]
-    (println "RefState getState called " name point)
-    (get @state point))
+  (destroy [this] (reset! state {}))
 
-  (setState [this value point]
-    (swap! state assoc point value))
+  VersionedStateContainer
+  (getStateAt [this version]
+    (println "RefState getStateAt called " name version)
+    (get @state version))
 
-    (destroyState [this] (reset! state {})))
+  (setStateAt [this value version]
+    (swap! state assoc version value)))
 

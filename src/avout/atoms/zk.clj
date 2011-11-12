@@ -1,17 +1,18 @@
 (ns avout.atoms.zk
-  (:use avout.atoms)
+  (:use avout.state)
   (:require [zookeeper :as zk]
             [zookeeper.data :as data]
             [avout.util :as util]))
 
 (deftype ZKAtomState [client dataNode]
-  AtomState
-  (initState [this]
+  Identity
+  (init [this]
     (zk/create-all client dataNode))
 
-  (destroyState [this]
+  (destroy [this]
     (zk/delete-all client dataNode))
 
+  StateContainer
   (getState [this]
     (println "ZKAtomState getState called " dataNode)
     (let [{:keys [data stat]} (zk/data client dataNode)]
