@@ -25,23 +25,6 @@
   (destroyRef [this]))
 
 
-;; Distributed versions of Clojure's standard Ref functions
-
-(defmacro dosync!!
-  "Distributed version of Clojure's dosync macro."
-  ([client & body]
-     `(do (tx/create-local-transaction ~client)
-          (tx/run-in-transaction ~client (fn [] ~@body)))))
-
-(defn ref-set!!
-  "Distributed version of Clojure's ref-set function."
-  ([ref value] (.setRef ref value)))
-
-(defn alter!!
-  "Distributed version of Clojure's alter function."
-  ([ref f & args] (.alterRef ref f args)))
-
-
 ;; distributed reference implementation
 
 (deftype DistributedReference [client nodeName refState cache validator watches lock]
@@ -67,7 +50,7 @@
     (let [t (tx/get-local-transaction client)]
       (if (tx/running? t)
         (.doSet t this (apply f (.doGet t this) args))
-        (throw (RuntimeException. "Must run set-ref!! within the dosync!! macro")))))
+        (throw (RuntimeException. "Must run alter!! within the dosync!! macro")))))
 
   (commuteRef [this f args] (throw (UnsupportedOperationException.)))
 
@@ -117,8 +100,10 @@
 
   (getValidator [this] @validator))
 
+
+
 (defn distributed-ref [client name ref-state & {:keys [validator]}]
-  (doto (DistributedReference. client
+  (doto (avout.refs.DistributedReference. client
                                name
                                ref-state
                                (atom {}) ;; cache
