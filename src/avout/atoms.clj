@@ -2,7 +2,8 @@
   (:use avout.state)
   (:require [zookeeper :as zk]
             [zookeeper.data :as data]
-            [avout.locks :as locks])
+            [avout.locks :as locks]
+            [avout.transaction :as tx])
   (:import (clojure.lang IRef)))
 
 ;; atom protocols
@@ -16,9 +17,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; DistributedAtom implementation
-
-(def DELIM "/")
-(def LOCK "/lock")
 
 (defn trigger-watchers
   [client node-name]
@@ -111,11 +109,12 @@
     (swap! cache assoc :valid false)))
 
 (defn distributed-atom [client name atom-data & {:keys [validator]}]
-  (doto (DistributedAtom. client
-                          name
-                          atom-data
-                          (atom {}) ;; cache
-                          (atom validator)
-                          (atom {})
-                          (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
-    .init))
+  (let [node-name (str tx/*stm-node* tx/ATOMS name)]
+    (doto (DistributedAtom. client
+                            node-name
+                            atom-data
+                            (atom {}) ;; cache
+                            (atom validator)
+                            (atom {})
+                            (locks/distributed-read-write-lock client :lock-node (str node-name tx/LOCK)))
+      .init)))

@@ -8,6 +8,8 @@
            (java.util Arrays TreeMap)
            (java.util.concurrent TimeUnit CountDownLatch)))
 
+(def ^:dynamic *use-cache* true)
+
 ;; protocols
 
 (defprotocol Transaction
@@ -23,12 +25,17 @@
 
 (def HISTORY "/history")
 (def TXN "/txn")
+(def LOCK "/lock")
+(def REFS "/refs")
+(def ATOMS "/atoms")
 (def PT-PREFIX "t-")
 (def NODE-DELIM "/")
 
 (def RETRY-LIMIT 25)
 (def LOCK-WAIT-MSEC 100)
 (def BARGE-WAIT-NANOS (* 10 10 1000000))
+(def MAX-STM-HISTORY 100)
+(def STM-GC-INTERVAL 100)
 
 ;; transaction states
 (def RUNNING (data/to-bytes 0))
@@ -43,7 +50,9 @@
 
 (defn init-stm
   ([client]
-     (zk/create-all client (str *stm-node* HISTORY) :persistent? true)))
+     (zk/create-all client (str *stm-node* HISTORY) :persistent? true)
+     (zk/create client (str *stm-node* REFS) :persistent? true)
+     (zk/create client (str *stm-node* ATOMS) :persistent? true)))
 
 (defn reset-stm
   ([client]
@@ -51,14 +60,14 @@
      (init-stm client)))
 
 (defn init-ref
-  ([client ref-name]
-     (zk/create-all client (str ref-name HISTORY) :persistent? true)
-     (zk/create client (str ref-name TXN) :persistent? true)))
+  ([client ref-node]
+     (zk/create-all client (str ref-node HISTORY) :persistent? true)
+     (zk/create client (str ref-node TXN) :persistent? true)))
 
 (defn reset-ref
-  ([client ref-name]
-     (zk/delete-all client ref-name)
-     (init-ref client ref-name)))
+  ([client ref-node]
+     (zk/delete-all client ref-node)
+     (init-ref client ref-node)))
 
 (defn extract-point [path]
   (subs path (- (count path) 12) (count path)))
@@ -105,16 +114,36 @@
              h
              (recur hs)))))))
 
+(defn trim-ref-history [client ref-node history-to-remove]
+  (doseq [h history-to-remove]
+    (println "trim-ref-history: " (str ref-node HISTORY NODE-DELIM h))
+    (zk/delete client (str ref-node HISTORY NODE-DELIM h) :async? true)))
+
+;; NEED TO FIND OPTIMAL PARAMS
+(defn garbage-collect-history [client current-point]
+  (let [point (util/extract-id current-point)]
+    (when (and (pos? point) (zero? (mod point STM-GC-INTERVAL)))
+      (let [history (take MAX-STM-HISTORY (util/sort-sequential-nodes (zk/children client (str *stm-node* HISTORY))))
+            refs (zk/children client (str *stm-node* REFS))
+            versions-to-keep (mapcat #(zk/children client (str *stm-node* REFS NODE-DELIM % HISTORY)) refs)
+            points-to-keep (into #{} (map #(first (parse-version %)) versions-to-keep))]
+        (println "points to keep: " points-to-keep)
+        (doseq [h history]
+          (when-not (get points-to-keep h)
+            (println "garbage-collect-history: deleting " (str *stm-node* HISTORY NODE-DELIM h))
+            (zk/delete client (str *stm-node* HISTORY NODE-DELIM h))))))))
+
 (defn get-committed-point-before
   "Gets the committed point before the given one."
-  ([client ref-name point]
-     (let [history (util/sort-sequential-nodes > (get-history client ref-name))
+  ([client ref-node point]
+     (let [history (util/sort-sequential-nodes > (get-history client ref-node))
            point-int (util/extract-id point)]
        (loop [[h & hs] history]
          (when-let [[txid commit-pt] (parse-version h)]
            (if (and (<= (util/extract-id commit-pt) point-int)
                     (current-state? client txid COMMITTED))
-             h
+             (do ;(trim-ref-history client ref-node hs)
+                 h)
              (recur hs)))))))
 
 (defn behind-committing-point?
@@ -162,9 +191,9 @@
   (.await (deref (.latch txn)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
   (throw retryex))
 
-(defn tagged? [client ref-name]
+(defn tagged? [client ref-node]
   "Returns the txid of the running transaction that tagged this ref, otherwise it returns nil"
-  (when-let [txid (first (zk/children client (str ref-name TXN)))]
+  (when-let [txid (first (zk/children client (str ref-node TXN)))]
     (when (current-state? client txid RUNNING COMMITTING)
       txid)))
 
@@ -173,6 +202,7 @@
     (block-and-bail txn)
     (do (zk/delete-children (.client txn) (str (.getName ref) TXN))
         (zk/create (.client txn) (str (.getName ref) TXN NODE-DELIM (deref (.txid txn)))
+
                    :persistent? false))))
 
 (defn sync-ref [ref]
@@ -207,6 +237,10 @@
 (defn running? [txn]
   (current-state? (.client txn) (deref (.txid txn)) RUNNING COMMITTING))
 
+(defn invalidate-cache-and-retry [txn ref]
+  (.invalidateCache ref)
+  (throw retryex))
+
 (defn update-caches [txn]
   (let [values (deref (.values txn))]
    (doseq [r (keys values)]
@@ -220,7 +254,7 @@
   (doGet [this ref]
     (if (running? this)
       (or (get @values ref)
-          (.getCache ref)
+          (when *use-cache* (.getCache ref))
           (do (sync-ref ref)
               (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
                 (if (behind-committing-point? ref commit-point)
@@ -229,6 +263,7 @@
       (throw retryex)))
 
   (doSet [this ref value]
+    ;;(invalidate-cache-and-retry this ref) ;; need to not use cache when a doSet follows the doGet
     (if (running? this)
       (do
         (when-not (contains? @sets ref)
@@ -266,6 +301,7 @@
               (update-values this)
               (trigger-watches this)
               (update-state client @txid COMMITTED)
+              ;(garbage-collect-history client @commitPoint)
               (update-caches this))
             (catch Error e (when-not (retryex? e) (throw e)))
             (finally (stop this)))

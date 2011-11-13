@@ -7,10 +7,9 @@
 
 ;; ZK data implementation
 
-(deftype ZKRefState [client name]
+(deftype ZKVersionedStateContainer [client name]
 
   Identity
-
   (init [this] nil)
 
   (getName [this] name)
@@ -18,7 +17,6 @@
   (destroy [this] nil)
 
   VersionedStateContainer
-
   (getStateAt [this version]
     (println "RefState getState called " name version)
     (let [{:keys [data stat]} (zk/data client (str name tx/HISTORY tx/NODE-DELIM version))]

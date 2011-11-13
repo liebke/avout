@@ -73,9 +73,9 @@
     (let [t (tx/get-local-transaction client)]
       (if (tx/running? t)
         (.doGet t this)
-        (or (.getCache this)
+        (or (when tx/*use-cache* (.getCache this))
             (when-let [commit-point (tx/get-last-committed-point client (.getName this))]
-              (.setCache this (.getState refState commit-point)))))))
+              (.setCache this (.getStateAt refState commit-point)))))))
 
   ;; callback params: akey, aref, old-val, new-val, but old-val will always be nil
   (addWatch [this key callback]
@@ -100,12 +100,13 @@
 
 
 (defn distributed-ref [client name ref-state & {:keys [validator]}]
-  (doto (avout.refs.DistributedReference. client
-                               name
-                               ref-state
-                               (atom {}) ;; cache
-                               (atom validator)
-                               (atom {}) ;; watchers
-                               (locks/distributed-read-write-lock client :lock-node (str name "/lock")))
-    .init))
+  (let [node-name (str tx/*stm-node* tx/REFS name)]
+    (doto (avout.refs.DistributedReference. client
+                                           node-name
+                                           ref-state
+                                           (atom {}) ;; cache
+                                           (atom validator)
+                                           (atom {}) ;; watchers
+                                           (locks/distributed-read-write-lock client :lock-node (str node-name tx/LOCK)))
+     .init)))
 

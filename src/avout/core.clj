@@ -29,28 +29,39 @@
   "Distributed version of Clojure's alter function."
   ([ref f & args] (.alterRef ref f args)))
 
-
 ;; ZK and local Reference implementations
 
 (defn zk-ref
   ([client name init-value & {:keys [validator]}]
-     (let [r (doto (refs/distributed-ref client name (avout.refs.zk.ZKRefState. client name))
+     (let [r (doto (refs/distributed-ref client name
+                                         (avout.refs.zk.ZKVersionedStateContainer.
+                                          client
+                                          (str tx/*stm-node* tx/REFS name)))
                (set-validator! validator))]
        (dosync!! client (ref-set!! r init-value))
        r))
   ([client name]
      ;; for connecting to an existing ref only
-     (refs/distributed-ref client name (avout.refs.zk.ZKRefState. client name))))
+     (refs/distributed-ref client name
+                           (avout.refs.zk.ZKVersionedStateContainer.
+                             client
+                             (str tx/*stm-node* tx/REFS name)))))
 
 (defn local-ref
   ([client name init-value & {:keys [validator]}]
-     (let [r (doto (refs/distributed-ref client name (avout.refs.local.LocalRefState. client name (atom {})))
+     (let [r (doto (refs/distributed-ref client name
+                                         (avout.refs.local.LocalVersionedStateContainer.
+                                           client
+                                           (str tx/*stm-node* tx/REFS name) (atom {})))
                (set-validator! validator))]
        (dosync!! client (ref-set!! r init-value))
        r))
   ([client name]
      ;; for connecting to an existing ref only
-     (refs/distributed-ref client name (avout.refs.local.LocalRefState. client name (atom {})))))
+     (refs/distributed-ref client name
+                           (avout.refs.local.LocalVersionedStateContainer.
+                             client
+                             (str tx/*stm-node* tx/REFS name) (atom {})))))
 
 
 
@@ -75,16 +86,38 @@
 
 (defn zk-atom
   ([client name init-value & {:keys [validator]}]
-     (doto (atoms/distributed-atom client name (avout.atoms.zk.ZKAtomState. client (str name "/data")))
+     (doto (atoms/distributed-atom client name (avout.atoms.zk.ZKStateContainer. client (str name "/data")))
        (set-validator! validator)
        (.reset init-value)))
   ([client name] ;; for connecting to an existing atom only
-     (atoms/distributed-atom client name (avout.atoms.zk.ZKAtomState. client (zk/create-all client (str name "/data"))))))
+     (atoms/distributed-atom client name (avout.atoms.zk.ZKStateContainer. client (zk/create-all client (str name "/data"))))))
 
 
 
 
 
+(comment
+
+  (use 'avout.core :reload-all)
+  (require '[avout.transaction :as tx])
+
+  (def client (connect "127.0.0.1"))
+  (tx/reset-stm client)
+
+  (defn thread-test [n]
+    (let [c (zk-ref client "/c" 0)
+          d (zk-ref client "/d" [])]
+      (doall
+       (repeatedly n
+                   (fn [] (future
+                            (try
+                              (time (dosync!! client (alter!! d conj (alter!! c inc))))
+                              (catch Throwable e (.printStackTrace e)))))))
+      [c d]))
+
+  (def refs (thread-test 1))
+  (map deref refs)
+  )
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; zk-atom examples
 (comment
@@ -155,8 +188,6 @@
   ;; connect to the stm
   (def client (zk/connect "127.0.0.1"))
 
-  (zk/delete-all client "/a")
-  (zk/delete-all client "/b")
   (def a (zk-ref client "/a" 0))
   (def b (zk-ref client "/b" 0))
   (doall

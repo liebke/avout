@@ -4,7 +4,7 @@
             [zookeeper.data :as data]
             [avout.util :as util]))
 
-(deftype ZKAtomState [client dataNode]
+(deftype ZKStateContainer [client dataNode]
   Identity
   (init [this]
     (zk/create-all client dataNode))

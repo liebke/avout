@@ -5,7 +5,7 @@
             [avout.util :as util]))
 
 
-(deftype LocalRefState [client name state]
+(deftype LocalVersionedStateContainer [client name state]
   Identity
   (init [this] nil)
 
