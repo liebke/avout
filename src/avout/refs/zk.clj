@@ -18,7 +18,6 @@
 
   VersionedStateContainer
   (getStateAt [this version]
-    (println "RefState getState called " name version)
     (let [{:keys [data stat]} (zk/data client (str name tx/HISTORY tx/NODE-DELIM version))]
       (util/deserialize-form data)))
 

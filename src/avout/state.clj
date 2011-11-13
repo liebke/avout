@@ -18,5 +18,8 @@
 
 (defprotocol StateCache
   (setCache [this value])
+  (setCacheAt [this value version])
   (getCache [this])
+  (cachedVersion [this])
   (invalidateCache [this]))
+

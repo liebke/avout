@@ -104,7 +104,7 @@
   (def client (connect "127.0.0.1"))
   (tx/reset-stm client)
 
-  (defn thread-test [n]
+  (defn thread-test [client n]
     (let [c (zk-ref client "/c" 0)
           d (zk-ref client "/d" [])]
       (doall
@@ -114,6 +114,16 @@
                               (time (dosync!! client (alter!! d conj (alter!! c inc))))
                               (catch Throwable e (.printStackTrace e)))))))
       [c d]))
+
+    (defn single-thread-test [client n]
+      (let [c (zk-ref client "/c" 0)
+            d (zk-ref client "/d" [])]
+        (doall
+         (repeatedly n
+                     (fn [] (try
+                              (time (dosync!! client (alter!! d conj (alter!! c inc))))
+                              (catch Throwable e (.printStackTrace e))))))
+        [c d]))
 
   (def refs (thread-test 1))
   (map deref refs)

@@ -31,8 +31,8 @@
 (def PT-PREFIX "t-")
 (def NODE-DELIM "/")
 
-(def RETRY-LIMIT 25)
-(def LOCK-WAIT-MSEC 100)
+(def RETRY-LIMIT 50)
+(def LOCK-WAIT-MSEC 50)
 (def BARGE-WAIT-NANOS (* 10 10 1000000))
 (def MAX-STM-HISTORY 100)
 (def STM-GC-INTERVAL 100)
@@ -116,7 +116,6 @@
 
 (defn trim-ref-history [client ref-node history-to-remove]
   (doseq [h history-to-remove]
-    (println "trim-ref-history: " (str ref-node HISTORY NODE-DELIM h))
     (zk/delete client (str ref-node HISTORY NODE-DELIM h) :async? true)))
 
 ;; NEED TO FIND OPTIMAL PARAMS
@@ -191,6 +190,10 @@
   (.await (deref (.latch txn)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
   (throw retryex))
 
+(defn rand-block-and-bail [txn]
+  (.await (deref (.latch txn)) (rand-int LOCK-WAIT-MSEC) TimeUnit/MILLISECONDS)
+  (throw retryex))
+
 (defn tagged? [client ref-node]
   "Returns the txid of the running transaction that tagged this ref, otherwise it returns nil"
   (when-let [txid (first (zk/children client (str ref-node TXN)))]
@@ -199,7 +202,7 @@
 
 (defn write-tag [txn ref]
   (if (behind-committing-point? ref (deref (.readPoint txn)))
-    (block-and-bail txn)
+    (rand-block-and-bail txn)
     (do (zk/delete-children (.client txn) (str (.getName ref) TXN))
         (zk/create (.client txn) (str (.getName ref) TXN NODE-DELIM (deref (.txid txn)))
 
@@ -215,7 +218,7 @@
     (when-let [tagged-txid (tagged? (.client txn) (.getName ref))]
       (when (and (not= (deref (.txid txn)) tagged-txid)
                  (not (barge txn tagged-txid)))
-        (block-and-bail txn)))
+        (rand-block-and-bail txn)))
     (write-tag txn ref)))
 
 (defn update-values [txn]
@@ -239,12 +242,13 @@
 
 (defn invalidate-cache-and-retry [txn ref]
   (.invalidateCache ref)
-  (throw retryex))
+  (rand-block-and-bail txn) ; (throw retryex)
+  )
 
 (defn update-caches [txn]
   (let [values (deref (.values txn))]
    (doseq [r (keys values)]
-     (.setCache r (get values r)))))
+     (.setCacheAt r (get values r) (deref (.commitPoint txn))))))
 
 (deftype LockingTransaction [returnValue client txid startPoint
                              startTime readPoint commitPoint
@@ -254,12 +258,14 @@
   (doGet [this ref]
     (if (running? this)
       (or (get @values ref)
-          (when *use-cache* (.getCache ref))
           (do (sync-ref ref)
               (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
                 (if (behind-committing-point? ref commit-point)
-                  (block-and-bail this)
-                  (when commit-point (.setCache ref (.getStateAt (.refState ref) commit-point)))))))
+                  (rand-block-and-bail this)
+                  (when commit-point
+                    (if-let [v (and *use-cache* (= commit-point (.cachedVersion ref)) (.getCache ref))]
+                      v
+                      (.setCacheAt ref (.getStateAt (.refState ref) commit-point) commit-point)))))))
       (throw retryex)))
 
   (doSet [this ref value]
@@ -271,7 +277,8 @@
           (swap! sets conj ref))
         (swap! values assoc ref value)
         value)
-      (throw retryex)))
+      (rand-block-and-bail this) ; (throw retryex)
+      ))
 
   (doCommute [this f args]
     ;; TODO

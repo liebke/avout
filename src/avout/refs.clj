@@ -63,10 +63,12 @@
     (when (:valid @cache)
       (:value @cache)))
 
-  (setCache [this value]
-    (reset! cache {:valid true :value value})
+  (setCacheAt [this value version]
+    (reset! cache {:valid true :value value :version version})
     value)
 
+  (cachedVersion [this]
+    (:version @cache))
 
   IRef
   (deref [this]
@@ -75,7 +77,7 @@
         (.doGet t this)
         (or (when tx/*use-cache* (.getCache this))
             (when-let [commit-point (tx/get-last-committed-point client (.getName this))]
-              (.setCache this (.getStateAt refState commit-point)))))))
+              (.setCacheAt this (.getStateAt refState commit-point) commit-point))))))
 
   ;; callback params: akey, aref, old-val, new-val, but old-val will always be nil
   (addWatch [this key callback]
