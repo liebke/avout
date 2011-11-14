@@ -2,7 +2,8 @@
   (:use avout.state)
   (:require [zookeeper :as zk]
             [avout.locks :as locks]
-            [avout.transaction :as tx])
+            [avout.transaction :as tx]
+            [avout.config :as cfg])
   (:import (clojure.lang IRef)))
 
 
@@ -56,7 +57,7 @@
 
   StateCache
   (invalidateCache [this]
-    (zk/children client (str nodeName tx/TXN) :watcher (fn [event] (.invalidateCache this)))
+    (zk/children client (str nodeName cfg/TXN) :watcher (fn [event] (.invalidateCache this)))
     (swap! cache assoc :valid false))
 
   (getCache [this]
@@ -75,7 +76,7 @@
     (let [t (tx/get-local-transaction client)]
       (if (tx/running? t)
         (.doGet t this)
-        (or (when tx/*use-cache* (.getCache this))
+        (or (when cfg/*use-cache* (.getCache this))
             (when-let [commit-point (tx/get-last-committed-point client (.getName this))]
               (.setCacheAt this (.getStateAt refState commit-point) commit-point))))))
 
@@ -102,13 +103,13 @@
 
 
 (defn distributed-ref [client name ref-state & {:keys [validator]}]
-  (let [node-name (str tx/*stm-node* tx/REFS name)]
+  (let [node-name (str cfg/*stm-node* cfg/REFS name)]
     (doto (avout.refs.DistributedReference. client
                                            node-name
                                            ref-state
                                            (atom {}) ;; cache
                                            (atom validator)
                                            (atom {}) ;; watchers
-                                           (locks/distributed-read-write-lock client :lock-node (str node-name tx/LOCK)))
+                                           (locks/distributed-read-write-lock client :lock-node (str node-name cfg/LOCK)))
      .init)))
 

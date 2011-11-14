@@ -2,6 +2,7 @@
   (:require [avout.refs :as refs]
             [avout.atoms :as atoms]
             [avout.transaction :as tx]
+            [avout.config :as cfg]
             [avout.locks :as locks]
             [zookeeper :as zk]
             avout.refs.zk
@@ -38,7 +39,7 @@
      (let [r (doto (refs/distributed-ref client name
                                          (avout.refs.zk.ZKVersionedStateContainer.
                                           client
-                                          (str tx/*stm-node* tx/REFS name)))
+                                          (str cfg/*stm-node* cfg/REFS name)))
                (set-validator! validator))]
        (dosync!! client (ref-set!! r init-value))
        r))
@@ -47,14 +48,14 @@
      (refs/distributed-ref client name
                            (avout.refs.zk.ZKVersionedStateContainer.
                              client
-                             (str tx/*stm-node* tx/REFS name)))))
+                             (str cfg/*stm-node* cfg/REFS name)))))
 
 (defn local-ref
   ([client name init-value & {:keys [validator]}]
      (let [r (doto (refs/distributed-ref client name
                                          (avout.refs.local.LocalVersionedStateContainer.
                                            client
-                                           (str tx/*stm-node* tx/REFS name) (atom {})))
+                                           (str cfg/*stm-node* cfg/REFS name) (atom {})))
                (set-validator! validator))]
        (dosync!! client (ref-set!! r init-value))
        r))
@@ -63,7 +64,7 @@
      (refs/distributed-ref client name
                            (avout.refs.local.LocalVersionedStateContainer.
                              client
-                             (str tx/*stm-node* tx/REFS name) (atom {})))))
+                             (str cfg/*stm-node* cfg/REFS name) (atom {})))))
 
 
 
@@ -104,7 +105,7 @@
   (require '[avout.transaction :as tx])
 
   (def client (connect "127.0.0.1"))
-  (tx/reset-stm client)
+  (reset-stm client)
 
   (defn thread-test [client n]
     (let [c (zk-ref client "/c" 0)
@@ -117,18 +118,23 @@
                               (catch Throwable e (.printStackTrace e)))))))
       [c d]))
 
-    (defn single-thread-test [client n]
-      (let [c (zk-ref client "/c" 0)
-            d (zk-ref client "/d" [])]
-        (doall
-         (repeatedly n
-                     (fn [] (try
-                              (time (dosync!! client (alter!! d conj (alter!! c inc))))
-                              (catch Throwable e (.printStackTrace e))))))
-        [c d]))
+  (defn single-thread-test [client n]
+    (let [c (zk-ref client "/c" 0)
+          d (zk-ref client "/d" [])]
+      (doall
+       (repeatedly n
+                   (fn [] (try
+                            (time (dosync!! client (alter!! d conj (alter!! c inc))))
+                            (catch Throwable e (.printStackTrace e))))))
+      [c d]))
 
-  (def refs (thread-test 1))
+  (def refs (thread-test 25))
   (map deref refs)
+
+  (def refs (single-thread-test 25))
+  (map deref refs)
+
+
   )
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; zk-atom examples

@@ -2,7 +2,7 @@
   (:use avout.state)
   (:require [zookeeper :as zk]
             [zookeeper.data :as data]
-            [avout.transaction :as tx]
+            [avout.config :as cfg]
             [avout.util :as util]))
 
 ;; ZK data implementation
@@ -18,9 +18,9 @@
 
   VersionedStateContainer
   (getStateAt [this version]
-    (let [{:keys [data stat]} (zk/data client (str name tx/HISTORY tx/NODE-DELIM version))]
+    (let [{:keys [data stat]} (zk/data client (str name cfg/HISTORY cfg/NODE-DELIM version))]
       (util/deserialize-form data)))
 
   (setStateAt [this value version]
-    (zk/set-data client (str name tx/HISTORY tx/NODE-DELIM version) (util/serialize-form value) -1)))
+    (zk/set-data client (str name cfg/HISTORY cfg/NODE-DELIM version) (util/serialize-form value) -1)))
 

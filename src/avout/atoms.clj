@@ -3,7 +3,7 @@
   (:require [zookeeper :as zk]
             [zookeeper.data :as data]
             [avout.locks :as locks]
-            [avout.transaction :as tx])
+            [avout.config :as cfg])
   (:import (clojure.lang IRef)))
 
 ;; atom protocols
@@ -109,12 +109,12 @@
     (swap! cache assoc :valid false)))
 
 (defn distributed-atom [client name atom-data & {:keys [validator]}]
-  (let [node-name (str tx/*stm-node* tx/ATOMS name)]
+  (let [node-name (str cfg/*stm-node* cfg/ATOMS name)]
     (doto (DistributedAtom. client
                             node-name
                             atom-data
                             (atom {}) ;; cache
                             (atom validator)
                             (atom {})
-                            (locks/distributed-read-write-lock client :lock-node (str node-name tx/LOCK)))
+                            (locks/distributed-read-write-lock client :lock-node (str node-name cfg/LOCK)))
       .init)))
