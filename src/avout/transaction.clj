@@ -6,7 +6,8 @@
             [clojure.string :as s])
   (:import (clojure.lang IRef)
            (java.util Arrays TreeMap)
-           (java.util.concurrent TimeUnit CountDownLatch)))
+           (java.util.concurrent TimeUnit CountDownLatch)
+           (org.apache.zookeeper KeeperException$NoNodeException)))
 
 (def ^:dynamic *use-cache* true)
 
@@ -101,8 +102,10 @@
 
 (defn current-state? [client txid & states]
   (when txid
-    (let [state (:data (zk/data client (point-node txid)))]
-      (reduce #(or %1 (state= state %2)) false states))))
+    (try
+      (let [state (:data (zk/data client (point-node txid)))]
+        (reduce #(or %1 (state= state %2)) false states))
+      (catch KeeperException$NoNodeException e (println "current-state? No such txn node: " txid)))))
 
 (defn get-last-committed-point
   "Gets the last committed point for the given Ref."
@@ -121,16 +124,19 @@
 ;; NEED TO FIND OPTIMAL PARAMS
 (defn garbage-collect-history [client current-point]
   (let [point (util/extract-id current-point)]
-    (when (and (pos? point) (zero? (mod point STM-GC-INTERVAL)))
-      (let [history (take MAX-STM-HISTORY (util/sort-sequential-nodes (zk/children client (str *stm-node* HISTORY))))
-            refs (zk/children client (str *stm-node* REFS))
-            versions-to-keep (mapcat #(zk/children client (str *stm-node* REFS NODE-DELIM % HISTORY)) refs)
-            points-to-keep (into #{} (map #(first (parse-version %)) versions-to-keep))]
-        (println "points to keep: " points-to-keep)
-        (doseq [h history]
-          (when-not (get points-to-keep h)
-            (println "garbage-collect-history: deleting " (str *stm-node* HISTORY NODE-DELIM h))
-            (zk/delete client (str *stm-node* HISTORY NODE-DELIM h))))))))
+    (when (and (zero? (mod point STM-GC-INTERVAL)) (pos? point))
+      (future
+        (let [history (drop-last MAX-STM-HISTORY (util/sort-sequential-nodes (zk/children client (str *stm-node* HISTORY))))
+              refs (zk/children client (str *stm-node* REFS))
+              versions-to-keep (mapcat #(zk/children client (str *stm-node* REFS NODE-DELIM % HISTORY)) refs)
+              max-point-to-trim (apply max (map util/extract-id versions-to-keep))
+              points-to-keep (into #{} (map #(first (parse-version %)) versions-to-keep))]
+          (loop [[h & hs] history]
+            (when h
+              (when (not (current-state? client h RUNNING COMMITTING RETRY COMMITTED))
+                (print ".")
+                (zk/delete client (str *stm-node* HISTORY NODE-DELIM h)))
+              (recur hs))))))))
 
 (defn get-committed-point-before
   "Gets the committed point before the given one."
@@ -238,7 +244,8 @@
   (.countDown (deref (.latch txn))))
 
 (defn running? [txn]
-  (current-state? (.client txn) (deref (.txid txn)) RUNNING COMMITTING))
+  (when (.txid txn)
+    (current-state? (.client txn) (deref (.txid txn)) RUNNING COMMITTING)))
 
 (defn invalidate-cache-and-retry [txn ref]
   (.invalidateCache ref)
@@ -308,7 +315,7 @@
               (update-values this)
               (trigger-watches this)
               (update-state client @txid COMMITTED)
-              ;(garbage-collect-history client @commitPoint)
+              (garbage-collect-history client @commitPoint)
               (update-caches this))
             (catch Error e (when-not (retryex? e) (throw e)))
             (finally (stop this)))

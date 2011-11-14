@@ -10,6 +10,8 @@
 
 (def connect zk/connect)
 
+(def reset-stm tx/reset-stm)
+
 ;; Distributed versions of Clojure's standard Ref functions
 
 (defmacro dosync!!
