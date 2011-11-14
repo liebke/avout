@@ -33,7 +33,7 @@
 (def NODE-DELIM "/")
 
 (def RETRY-LIMIT 50)
-(def LOCK-WAIT-MSEC 50)
+(def LOCK-WAIT-MSEC 25)
 (def BARGE-WAIT-NANOS (* 10 10 1000000))
 (def MAX-STM-HISTORY 100)
 (def STM-GC-INTERVAL 100)
@@ -121,7 +121,6 @@
   (doseq [h history-to-remove]
     (zk/delete client (str ref-node HISTORY NODE-DELIM h) :async? true)))
 
-;; NEED TO FIND OPTIMAL PARAMS
 (defn garbage-collect-history [client current-point]
   (let [point (util/extract-id current-point)]
     (when (and (zero? (mod point STM-GC-INTERVAL)) (pos? point))
@@ -196,10 +195,6 @@
   (.await (deref (.latch txn)) LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
   (throw retryex))
 
-(defn rand-block-and-bail [txn]
-  (.await (deref (.latch txn)) (rand-int LOCK-WAIT-MSEC) TimeUnit/MILLISECONDS)
-  (throw retryex))
-
 (defn tagged? [client ref-node]
   "Returns the txid of the running transaction that tagged this ref, otherwise it returns nil"
   (when-let [txid (first (zk/children client (str ref-node TXN)))]
@@ -208,7 +203,7 @@
 
 (defn write-tag [txn ref]
   (if (behind-committing-point? ref (deref (.readPoint txn)))
-    (rand-block-and-bail txn)
+    (block-and-bail txn)
     (do (zk/delete-children (.client txn) (str (.getName ref) TXN))
         (zk/create (.client txn) (str (.getName ref) TXN NODE-DELIM (deref (.txid txn)))
 
@@ -224,7 +219,7 @@
     (when-let [tagged-txid (tagged? (.client txn) (.getName ref))]
       (when (and (not= (deref (.txid txn)) tagged-txid)
                  (not (barge txn tagged-txid)))
-        (rand-block-and-bail txn)))
+        (block-and-bail txn)))
     (write-tag txn ref)))
 
 (defn update-values [txn]
@@ -249,7 +244,7 @@
 
 (defn invalidate-cache-and-retry [txn ref]
   (.invalidateCache ref)
-  (rand-block-and-bail txn) ; (throw retryex)
+  (block-and-bail txn) ; (throw retryex)
   )
 
 (defn update-caches [txn]
@@ -268,7 +263,7 @@
           (do (sync-ref ref)
               (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
                 (if (behind-committing-point? ref commit-point)
-                  (rand-block-and-bail this)
+                  (block-and-bail this)
                   (when commit-point
                     (if-let [v (and *use-cache* (= commit-point (.cachedVersion ref)) (.getCache ref))]
                       v
@@ -284,7 +279,7 @@
           (swap! sets conj ref))
         (swap! values assoc ref value)
         value)
-      (rand-block-and-bail this) ; (throw retryex)
+      (block-and-bail this) ; (throw retryex)
       ))
 
   (doCommute [this f args]
