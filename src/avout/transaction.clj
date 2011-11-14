@@ -119,6 +119,7 @@
 
 (defn trim-ref-history [client ref-node history-to-remove]
   (doseq [h history-to-remove]
+    (print "-")
     (zk/delete client (str ref-node HISTORY NODE-DELIM h) :async? true)))
 
 (defn garbage-collect-history [client current-point]
@@ -146,7 +147,7 @@
          (when-let [[txid commit-pt] (parse-version h)]
            (if (and (<= (util/extract-id commit-pt) point-int)
                     (current-state? client txid COMMITTED))
-             (do ;(trim-ref-history client ref-node hs)
+             (do (trim-ref-history client ref-node hs)
                  h)
              (recur hs)))))))
 
