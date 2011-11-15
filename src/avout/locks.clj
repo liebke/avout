@@ -33,33 +33,38 @@
 
 (defmacro when-lock
   ([lock & body]
-     `(when (.tryLock ~lock)
+     `(let [locked# (atom false)]
         (try
-          ~@body
-          (finally (.unlock ~lock))))))
+          (when (reset! locked# (.tryLock ~lock))
+            ~@body)
+          (finally (when @locked# (.unlock ~lock)))))))
 
 (defmacro if-lock
   ([lock then-exp else-exp]
-     `(if (.tryLock ~lock)
+     `(let [locked# (atom false)]
         (try
-          ~then-exp
-          (finally (.unlock ~lock)))
-        ~else-exp)))
+          (if (reset! locked# (.tryLock ~lock))
+            ~then-exp
+            ~else-exp)
+          (finally (when @locked# (.unlock ~lock)))))))
 
 (defmacro when-lock-with-timeout
   ([lock duration time-units & body]
-     `(try
-        (.tryLock ~lock ~duration ~time-units)
-        ~@body
-        (finally (.unlock ~lock)))))
+     `(let [locked# (atom false)]
+        (try
+          (when (reset! locked# (.tryLock ~lock ~duration ~time-units))
+            ~@body)
+          (finally (when @locked# (.unlock ~lock)))))))
 
 (defmacro if-lock-with-timeout
   ([lock duration time-units then-exp else-exp]
-     `(if (.tryLock ~lock ~duration ~time-units)
+     `(let [locked# (atom false)]
         (try
-          ~then-exp
-          (finally (.unlock ~lock)))
-        ~else-exp)))
+          (if (reset! locked# (.tryLock ~lock ~duration ~time-units))
+            ~then-exp
+            ~else-exp)
+          (finally (when @locked# (.unlock ~lock)))))))
+
 
 ;; Distributed lock and condition types
 
