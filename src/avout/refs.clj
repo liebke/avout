@@ -14,8 +14,12 @@
   (setRef [this value])
   (alterRef [this f args])
   (commuteRef [this f args])
-  (ensureRef [this]))
+  (ensureRef [this])
+  (clearLocks [this]))
 
+
+(defn txn-running? [txn]
+  (tx/state= (deref (.state txn)) tx/RUNNING))
 
 ;; distributed reference implementation
 
@@ -33,15 +37,16 @@
   (getName [this] nodeName)
 
   TransactionReference
+
   (setRef [this value]
     (let [t (tx/get-local-transaction client)]
-      (if (tx/running? t)
+      (if (txn-running? t) ; (tx/state= (deref (.state t)) tx/RUNNING)
         (.doSet t this value)
         (throw (RuntimeException. "Must run set-ref!! within the dosync!! macro")))))
 
   (alterRef [this f args]
     (let [t (tx/get-local-transaction client)]
-      (if (tx/running? t)
+      (if (txn-running? t) ; (tx/state= (deref (.state t)) tx/RUNNING)
         (.doSet t this (apply f (.doGet t this) args))
         (throw (RuntimeException. "Must run alter!! within the dosync!! macro")))))
 
@@ -51,9 +56,13 @@
 
   (version [this]
     (let [t (tx/get-local-transaction client)]
-      (if (tx/running? t)
+      (if (tx/get-local-transaction client)
         (tx/get-committed-point-before client (.getName ref) (.readPoint ref))
         (tx/get-last-committed-point client (.getName this)))))
+
+  (clearLocks [this]
+    (zk/delete-children client (str nodeName cfg/TXN))
+    (zk/delete-children client (str nodeName cfg/LOCK)))
 
   StateCache
   (invalidateCache [this]
@@ -74,7 +83,7 @@
   IRef
   (deref [this]
     (let [t (tx/get-local-transaction client)]
-      (if (tx/running? t)
+      (if (txn-running? t) ; (tx/get-local-transaction client)
         (.doGet t this)
         (or (when cfg/*use-cache* (.getCache this))
             (when-let [commit-point (tx/get-last-committed-point client (.getName this))]

@@ -77,6 +77,14 @@
   ([client point old-state new-state]
      (zk/compare-and-set-data client (point-node point) old-state new-state)))
 
+(defn update-txn-state
+  ([txn new-state]
+     (zk/set-data (.client txn) (point-node (deref (.txid txn))) new-state -1)
+     (reset! (.state txn) new-state))
+  ([txn old-state new-state]
+     (when (zk/compare-and-set-data (.client txn) (point-node (deref (.txid txn))) old-state new-state)
+       (reset! (.state txn) new-state))))
+
 (defn get-history [client ref-name]
   (zk/children client (str ref-name cfg/HISTORY)))
 
@@ -88,7 +96,7 @@
     (try
       (let [state (:data (zk/data client (point-node txid)))]
         (reduce #(or %1 (state= state %2)) false states))
-      (catch KeeperException$NoNodeException e (println "current-state? No such txn node: " txid)))))
+      (catch KeeperException$NoNodeException e nil))))
 
 (defn get-last-committed-point
   "Gets the last committed point for the given Ref."
@@ -168,11 +176,12 @@
 
 (defn barge [txn tagged-txid]
   (and (barge-time-elapsed? txn)
-       (< (util/extract-id (deref (.txid txn))) (util/extract-id tagged-txid))
+       (or (< (util/extract-id (deref (.txid txn))) (util/extract-id tagged-txid))
+           (> (deref (.retryCount txn)) cfg/LAST-CHANCE-BARGE-RETRY))
        (update-state (.client txn) tagged-txid RUNNING KILLED)))
 
 (defn block-and-bail [txn]
-  (.await (deref (.latch txn)) cfg/LOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
+  (.await (deref (.latch txn)) cfg/BLOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
   (throw retryex))
 
 (defn tagged? [client ref-node]
@@ -186,7 +195,6 @@
     (block-and-bail txn)
     (do (zk/delete-children (.client txn) (str (.getName ref) cfg/TXN))
         (zk/create (.client txn) (str (.getName ref) cfg/TXN cfg/NODE-DELIM (deref (.txid txn)))
-
                    :persistent? false))))
 
 (defn sync-ref [ref]
@@ -195,12 +203,14 @@
 
 (defn try-tag [txn ref]
   (sync-ref ref)
-  (locks/with-lock (.writeLock (.lock ref))
-    (when-let [tagged-txid (tagged? (.client txn) (.getName ref))]
-      (when (and (not= (deref (.txid txn)) tagged-txid)
-                 (not (barge txn tagged-txid)))
-        (block-and-bail txn)))
-    (write-tag txn ref)))
+  (locks/if-lock-with-timeout (.writeLock (.lock ref)) cfg/LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
+    (do
+      (when-let [tagged-txid (tagged? (.client txn) (.getName ref))]
+        (when (and (not= (deref (.txid txn)) tagged-txid)
+                   (not (barge txn tagged-txid)))
+          (block-and-bail txn)))
+      (write-tag txn ref))
+    (block-and-bail txn)))
 
 (defn update-values [txn]
   (let [values (deref (.values txn))]
@@ -210,16 +220,25 @@
            point (str (deref (.txid txn)) "-" (deref (.commitPoint txn)))]
        (.setStateAt (.refState r) (get values r) point)))))
 
+(defn reincarnate-txn [txn]
+  (println "reincarnating txn: " (deref (.txid txn)))
+  (reset! (.txid txn) (next-point (.client txn)))
+  (update-txn-state txn RETRY) ;;(update-state (.client txn) (deref (.txid txn)) RETRY)
+  )
+
 (defn stop [txn]
   (when-not (current-state? (.client txn) (deref (.txid txn)) COMMITTED)
-    (update-state (.client txn) (deref (.txid txn)) RETRY))
-  (reset! (.values txn) {})
-  (reset! (.sets txn) #{})
-  (.clear (.commutes txn))
-  (.countDown (deref (.latch txn))))
+    (try
+      (update-txn-state txn RETRY) ;;(update-state (.client txn) (deref (.txid txn)) RETRY)
+      (catch KeeperException$NoNodeException e
+        (reincarnate-txn txn)))
+    (reset! (.values txn) {})
+    (reset! (.sets txn) #{})
+    (.clear (.commutes txn))
+    (.countDown (deref (.latch txn)))))
 
 (defn running? [txn]
-  (when (.txid txn)
+  (when (deref (.txid txn))
     (current-state? (.client txn) (deref (.txid txn)) RUNNING COMMITTING)))
 
 (defn invalidate-cache-and-retry [txn ref]
@@ -234,7 +253,8 @@
 
 (deftype LockingTransaction [returnValue client txid startPoint
                              startTime readPoint commitPoint
-                             values sets commutes ensures latch]
+                             values sets commutes ensures latch
+                             retryCount state]
   Transaction
 
   (doGet [this ref]
@@ -248,7 +268,8 @@
                     (if-let [v (and cfg/*use-cache* (= commit-point (.cachedVersion ref)) (.getCache ref))]
                       v
                       (.setCacheAt ref (.getStateAt (.refState ref) commit-point) commit-point)))))))
-      (throw retryex)))
+      (block-and-bail this) ;(throw retryex)
+      ))
 
   (doSet [this ref value]
     ;;(invalidate-cache-and-retry this ref) ;; need to not use cache when a doSet follows the doGet
@@ -259,7 +280,7 @@
           (swap! sets conj ref))
         (swap! values assoc ref value)
         value)
-      (block-and-bail this) ; (throw retryex)
+      (block-and-bail this)           ; (throw retryex)
       ))
 
   (doCommute [this f args]
@@ -275,24 +296,26 @@
       (if (< retry-count cfg/RETRY-LIMIT)
         (do
           (try
+            (reset! retryCount retry-count)
             (reset! readPoint (next-point client))
             (reset! latch (CountDownLatch. 1))
             (when (zero? retry-count)
               (reset! txid @readPoint)
               (reset! startPoint @readPoint)
               (reset! startTime (System/nanoTime)))
-            (update-state client @txid RUNNING)
+            (update-txn-state this RUNNING) ;;(update-state client @txid RUNNING)
             (reset! returnValue (f))
-            (when (update-state client @txid RUNNING COMMITTING)
+            (when (update-txn-state this RUNNING COMMITTING) ;;(update-state client @txid RUNNING COMMITTING)
               ;(process-commutes this) ;; TODO
               (validate-values this)
               (reset! commitPoint (next-point client))
               (update-values this)
               (trigger-watches this)
-              (update-state client @txid COMMITTED)
+              (update-txn-state this COMMITTED) ;;(update-state client @txid COMMITTED)
               (trim-stm-history client @commitPoint)
               (update-caches this))
-            (catch Error e (when-not (retryex? e) (throw e)))
+            (catch Error e (when-not (retryex? e)
+                             (throw e)))
             (finally (stop this)))
           (when-not (current-state? client @txid COMMITTED)
             (recur (inc retry-count))))
@@ -315,6 +338,8 @@
                              (TreeMap.)         ;; commutes
                              (atom #{})         ;; ensures
                              (atom (CountDownLatch. 1)) ;; latch
+                             (atom 0)           ;; retry-count
+                             (atom nil)         ;; state
                              )))
 
 (defn get-local-transaction [client]
@@ -323,5 +348,7 @@
           (.get local-transaction))))
 
 (defn run-in-transaction [client f]
-  (.runInTransaction (get-local-transaction client) f))
+  (try
+    (.runInTransaction (get-local-transaction client) f)
+    (catch Throwable e (println "run-in-transaction exception: " e (.printStackTrace e)))))
 

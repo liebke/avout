@@ -107,16 +107,47 @@
   (def client (connect "127.0.0.1"))
   (reset-stm client)
 
+  (defn timer [f]
+    (let [start (System/nanoTime)]
+      (f)
+      (/ (double (- (System/nanoTime) start)) 1000000.0)))
+
   (defn thread-test [client n]
-    (let [c (zk-ref client "/c" 0)
+    (let [times (for [i (range n)] (promise))
+          c (zk-ref client "/c" 0)
           d (zk-ref client "/d" [])]
-      (doall
-       (repeatedly n
-                   (fn [] (future
-                            (try
-                              (time (dosync!! client (alter!! d conj (alter!! c inc))))
-                              (catch Throwable e (.printStackTrace e)))))))
-      [c d]))
+      (dotimes [i n]
+        (print ".")
+        (future
+          (try
+            (deliver (nth times i) (timer #(dosync!! client (alter!! d conj (alter!! c inc)))))
+            (catch Throwable e (.printStackTrace e)))))
+      (println "submitted")
+      [times c d]))
+
+  (defn analyze-results [[time-proms c d] n]
+    (let [times (doall (sort (map deref time-proms)))
+          total-time (last times)
+          time-intervals (map (fn [t0 t1] (- t1 t0)) (conj times 0) times)
+          time-interval-per-thread (map / time-intervals (range n 0 -1))
+          avg-time-interval (/ (apply + time-intervals) n)
+          avg-time-interval-per-thread (/ (apply + time-interval-per-thread) n)]
+      {:times times
+       :total-time total-time
+       :time-intervals time-intervals
+       :time-interval-per-thread time-interval-per-thread
+       :c @c
+       :d @d
+       :pass? (= @c (count @d))
+       :avg-time-interval avg-time-interval
+       :avg-time-interval-per-thread avg-time-interval-per-thread}))
+
+  (defn analyze-thread-test [client n]
+    (let [res (analyze-results (thread-test client n) n)]
+      (assoc (if (and (= (:c res) n) (:pass? res))
+               res
+               (assoc res :pass? false))
+        :n n)))
 
   (defn single-thread-test [client n]
     (let [c (zk-ref client "/c" 0)
