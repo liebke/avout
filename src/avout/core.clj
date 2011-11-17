@@ -9,6 +9,8 @@
             avout.refs.local
             avout.atoms.zk))
 
+(def init-stm tx/init-stm)
+
 (def connect zk/connect)
 
 (def reset-stm tx/reset-stm)
@@ -30,6 +32,11 @@
 
 (defn alter!!
   "Distributed version of Clojure's alter function."
+  ([ref f & args] (.alterRef ref f args)))
+
+(defn commute!!
+  "Distributed version of Clojure's commute function. Temporarily implemented
+   using alter!! instead of the optimized semantics of Clojure's commute."
   ([ref f & args] (.alterRef ref f args)))
 
 ;; ZK and local Reference implementations
