@@ -17,9 +17,6 @@
 
 *Avout* is built on <a href="http://zookeeper.apache.org">ZooKeeper</a>, with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>, and also includes distributed implementations of <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/Lock.html">*java.util.concurrent.lock.Lock*</a>, <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/ReadWriteLock.html">*java.util.concurrent.lock.ReadWriteLock*</a>.
 
-<img src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time.png" />
-
-<img src="https://github.com/liebke/avout/raw/master/docs/images/avout-stm.png" />
 
 # Quick Start
 
@@ -94,6 +91,10 @@ A consequence of this view is that we perceive only snapshots of an unchanging p
 Perception is massively parallel and uncoordinated, meaning you don't have to coordinate with others to observe the value of an identity, no locks or synchronized blocks or message queues, just grab the most recent snapshot of the identity's value and go.
 
 Writes, on the other hand, must be coordinated. Since future values are derived by applying functions to an identity's most recent immutable value, writes must be atomic. Two processes that observe the same value for an identity cannot both write new values, one will win and the other will have to read the latest value and try their write again.
+
+<img src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time.png" />
+
+<img src="https://github.com/liebke/avout/raw/master/docs/images/stm.png" />
 
 
 Despite having such a precise model of state and time, it is typically the case that you want model your programs with pure functions and immutable values, minimizing where ever possible mutable state. Of course, it's not always possible to eliminate mutable state, and that's where having such clear semantics and mechanisms for updating state becomes powerful.
