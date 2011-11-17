@@ -3,16 +3,15 @@
   (:require [somnium.congomongo :as mongo]))
 
 (deftype MongoRefState [conn name]
-  Identity
-  (init [this])
 
-  (getName [this] name)
+  VersionedStateContainer
 
-  (destroyState [this]
+  (initVersionedStateContainer [this])
+
+  (destroyVersionedStateContainer [this]
     (mongo/with-mongo conn
       (mongo/destroy! :refs :where {:name name})))
 
-  VersionedStateContainer
   (getStateAt [this point]
     (:value (mongo/with-mongo conn
               (mongo/fetch-one :refs :where {:name name :point point}))))

@@ -6,14 +6,13 @@
 
 
 (deftype LocalVersionedStateContainer [client name state]
-  Identity
-  (init [this] nil)
-
-  (getName [this] name)
-
-  (destroy [this] (reset! state {}))
 
   VersionedStateContainer
+
+  (initVersionedStateContainer [this] nil)
+
+  (destroyVersionedStateContainer [this] (reset! state {}))
+
   (getStateAt [this version]
     (println "RefState getStateAt called " name version)
     (get @state version))

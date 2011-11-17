@@ -9,14 +9,12 @@
 
 (deftype ZKVersionedStateContainer [client name]
 
-  Identity
-  (init [this] nil)
-
-  (getName [this] name)
-
-  (destroy [this] nil)
-
   VersionedStateContainer
+
+  (initVersionedStateContainer [this] nil)
+
+  (destroyVersionedStateContainer [this] nil)
+
   (getStateAt [this version]
     (let [{:keys [data stat]} (zk/data client (str name cfg/HISTORY cfg/NODE-DELIM version))]
       (util/deserialize-form data)))

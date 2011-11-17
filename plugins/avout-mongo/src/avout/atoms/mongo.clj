@@ -4,17 +4,18 @@
             [somnium.congomongo :as mongo]))
 
 (deftype MongoAtomState [conn name] ;; add reference _id field to type, so it doesn't have to be retrieved
-  Identity
-  (init [this]
+
+  StateContainer
+
+  (initStateContainer [this]
     (mongo/with-mongo conn
       (or (mongo/fetch-one :atoms :where {:name name})
           (mongo/insert! :atoms {:name name}))))
 
-  (destroyState [this]
+  (destroyStateContainer [this]
     (mongo/with-mongo conn
       (mongo/destroy! :atoms (mongo/fetch-one :atoms :where {:name name}))))
 
-  StateContainer
   (getState [this]
     (:value (mongo/with-mongo conn
               (mongo/fetch-one :atoms :where {:name name}))))

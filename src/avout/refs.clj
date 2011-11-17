@@ -28,11 +28,11 @@
   (init [this]
     (tx/init-ref client nodeName)
     (.invalidateCache this) ;; sets initial watch
-    (.init refState))
+    (.initVersionedStateContainer refState))
 
   (destroy [this]
     (zk/delete-all client nodeName)
-    (.destroy refState))
+    (.destroyVersionedStateContainer refState))
 
   (getName [this] nodeName)
 
@@ -57,7 +57,7 @@
   (version [this]
     (let [t (tx/get-local-transaction client)]
       (if (tx/get-local-transaction client)
-        (tx/get-committed-point-before client (.getName ref) (.readPoint ref))
+        (tx/get-committed-point-before client (.getName this) (.readPoint ref))
         (tx/get-last-committed-point client (.getName this)))))
 
   (clearLocks [this]

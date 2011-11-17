@@ -5,14 +5,15 @@
             [avout.util :as util]))
 
 (deftype ZKStateContainer [client dataNode]
-  Identity
-  (init [this]
-    (zk/create-all client dataNode))
-
-  (destroy [this]
-    (zk/delete-all client dataNode))
 
   StateContainer
+
+  (initStateContainer [this]
+    (zk/create-all client dataNode))
+
+  (destroyStateContainer [this]
+    (zk/delete-all client dataNode))
+
   (getState [this]
     (println "ZKAtomState getState called " dataNode)
     (let [{:keys [data stat]} (zk/data client dataNode)]

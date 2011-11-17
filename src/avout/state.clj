@@ -8,11 +8,16 @@
   (init [this])
   (destroy [this]))
 
+
 (defprotocol StateContainer
+  (initStateContainer [this])
+  (destroyStateContainer [this])
   (getState [this])
   (setState [this value]))
 
 (defprotocol VersionedStateContainer
+  (initVersionedStateContainer [this])
+  (destroyVersionedStateContainer [this])
   (getStateAt [this version])
   (setStateAt [this value version]))
 

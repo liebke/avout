@@ -35,12 +35,12 @@
   (init [this]
     (zk/create-all client nodeName :persistent? true)
     (.invalidateCache this)
-    (.init atomState))
+    (.initStateContainer atomState))
 
   (getName [this] nodeName)
 
   (destroy [this]
-    (.destroy atomState))
+    (.destroyStateContainer atomState))
 
   AtomReference
   (compareAndSet [this old-value new-value]
