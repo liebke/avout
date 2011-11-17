@@ -103,40 +103,8 @@ Despite having such a precise model of state and time, it is typically the case 
 Likewise, when writing distributed applications, a goal is to create components that are loosely coupled and which communicate with each other asynchronously, but this is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where Avout Atoms and Refs come in.
 
 
-# NOTES
 
-
-Pure functions, immutable values, identity.
-
-Functional programming eliminates time from consideration. This is not purely functional programming, because the progression of time must be contended with.
-MVCC
-
-atomicity, consistency, isolation, and optionally durability ACI(D)
-
-values for points in time, all you're ever going to get is a value at a point in time. there is no such thing as a mutable value, just immutable values at different points in time. 
-
-An identity is a concept applied to causally linked values over time.
-
-The future is a function of the past. A process creates the future from the past.
-
-Identities are a mental construct superimposed on a series of casually linked values.
-
-time is a derivative of a these series of values.
-
-continuity is a process creating successive values.
-
-perception is massively parallel and uncoordinated.
-
-* we are always perceiving the (unchanging!) past
-* ignoring feedback, we like snapshots
-
-Modeling time with functions and values
-
-Changing state by applying functions to the value associated with an identity, and using the result as the new value of the identity.
-
-
-
-## avout.locks
+# avout.locks
 
 The avout.locks namespace contains an implementation of java.util.concurrent.locks.Lock, called ZKDistributedReentrantLock, and an implementation of java.util.concurrent.locks.ReadWriteLock, called ZKDistributedReentrantReadWriteLock.
 
