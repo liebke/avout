@@ -50,7 +50,7 @@
 ;; avg-time-interval-per-thread: 63.66
 
 (deftest write-skew
-  (let [run-count 10
+  (let [run-count 100
         max-threads 25
         client (connect "127.0.0.1")
         c (zk-ref client "/c-test" 0)
