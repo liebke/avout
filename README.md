@@ -104,30 +104,37 @@ The above three types of Atoms and Refs provide examples for implementing other 
 
 New types of Atoms are created by implementing the **avout.state.StateContainer** protocol.
 
+```clojure
     (defprotocol StateContainer
       (initStateContainer [this])
       (destroyStateContainer [this])
       (getState [this])
       (setState [this value]))
+```
 
 Once you have implemented a *StateContainer*, create a distributed Atom by passing it to the **avout.atoms.distributed-atom** function.
 
+```clojure
     (defn custom-atom [client name] 
       (distributed-atom client atom-name custom-state-container))
+```
 
 To create new Ref types, implement **avout.state.VersionedStateContainer**.
 
+```clojure
     (defprotocol VersionedStateContainer
       (initVersionedStateContainer [this])
       (destroyVersionedStateContainer [this])
       (getStateAt [this version])
       (setStateAt [this value version]))
+```
 
 Once you have implemented a *VersionedStateContainer*, create a distributed Ref by passing it to the **avout.refs.distributed-ref** function.
 
+```clojure
     (defn custom-ref [client name] 
       (distributed-ref client ref-name custom-versioned-state-container))
-
+```
 
 <a name="quick-start" />
 ## Quick Start
@@ -138,34 +145,45 @@ Once you have implemented a *VersionedStateContainer*, create a distributed Ref 
 
 To get started, you'll need to <a href="#running-zookeeper">run ZooKeeper</a>, and include Avout as a dependency by adding the following to your Leiningen project.clj file:
 
+```clojure
     [avout "0.5.0-SNAPSHOT"]
+```
 
 Then load the avout.core namespace, and create a ZooKeeper client that will be passed to distributed Refs and Atoms when they are created and to dosync!! transactions when they are performed.
 
+```clojure
     (use 'avout.core)
     (def client (connect "127.0.0.1"))
-    
+```
+   
 The first time you use avout, you'll need to initialize it.
 
+```clojure
     (init-stm client)
+```
 
 Now create a distributed atom, you'll need to pass the ZooKeeper client, a ZooKeeper compliant name (must start with a slash), and an optional initial-value. Skip the initial value if you want to connect to an existing distributed Atom.
-    
+  
+```clojure
     (def a0 (zk-atom client "/a0" 0))
-    
+```
+  
 Deref it.
-
+```clojure
     @a0
-    
+```
+  
 Then you can use the swap!! and reset!! functions just as you would Clojure's built-in swap! and reset! functions, except you will need to pass the ZooKeeper client as the first parameter.
 
+```clojure
     (swap!! a0 inc)
     
     (reset!! a0 0)
-    
+```
     
 Create a distributed Ref backed by ZooKeeper data fields
 
+```clojure
     (def r0 (zk-ref client "/r0" 0))
     (def r1 (zk-ref client "/r1" []))
     
@@ -180,12 +198,13 @@ Create a distributed Ref backed by ZooKeeper data fields
     (dosync!! client
       (ref-set!! r0 0)
       (ref-set!! r1 []))
-      
+```
 
 Move a member from one group to another, across two different ref types (zk and mongo), transactionally so that the member always exist in one group or the other, but never neither group nor both groups.
 
 Define the two groups as refs (one zk-backed, the other mongodb-backed) that contain a map with one fields :members, which is a set of names (Note: mongo-ref and mongo-atom are part of a seperate project called mongo-avout, which lives in the plugins directory, you will need to install it in order to run the following example).
     
+```clojure
     (import 'avout.refs.mongo)
     
     (def group1 (zk-ref client "/group1" {:members #{"david"}}))
@@ -194,7 +213,7 @@ Define the two groups as refs (one zk-backed, the other mongodb-backed) that con
     (dosync!! client
       (alter!! group1 update-in [:members] disj "david")
       (alter!! group2 update-in [:members] conj "david"))
-      
+```
     
 
 <a name="locks" />
@@ -211,58 +230,73 @@ The avout.locks namespace contains an implementation of java.util.concurrent.loc
 
 First require avout.zookeeper and avout.locks.
 
+```clojure
     (require '(zookeeper :as zk))
     (use 'avout.locks)
-    
+```
+ 
 Then get a ZooKeeper client.    
 
+```clojure
     (def client (zk/connect "127.0.0.1"))
-    
+```
+  
 Then create a ZKDistributedReentrantLock with the distributed-lock function.
 
+```clojure
     (def lock (distributed-lock client :lock-node "/lock"))
     
     (try (.lock lock)
          ... do something
 	 (finally (.unlock lock)))
+```
 
 The lock method blocks until the lock is obtained. It is standard practice to call lock within a try block with a finally statement that unlocks it.
 	 
 You can use the with-lock macro, which is equivalent to Clojure's locking macro, but designed to work with java.util.concurrent.locks.Lock instead of the traditional monitor locks.
 
+```clojure
     (with-lock lock
       ... do something)
-      
+```
+  
 The tryLock method doesn't block while waiting for a lock, instead it returns a boolean indicating whether the lock was obtained.
 
+```clojure
     (try (.tryLock lock)
       ... do something
       (finally (.unlock lock)))
-      
+```
+ 
 Or use the when-lock and if-lock macros.
 
+```clojure
     (when-lock lock
        (... do something)
        
     (if-lock lock
       (... got lock, do something)
       (... didn't get lock do something else))
-      
+```
+
 The tryLock method can take a timeout duration and units.
 
+```clojure
     (try (.tryLock lock 10 java.util.concurrent.TimeUnit/MILLISECONDS)
       ... do something
       (finally (.unlock lock)))
+```
 
 The macros when-lock-with-timeout and if-lock-with-timeout are also available.
 
+```clojure
     (when-lock-with-timeout lock 10 java.util.concurrent.TimeUnit/MILLISECONDS
        (... do something)
        
     (if-lock-with-timeout lock 10 java.util.concurrent.TimeUnit/MILLISECONDS
       (... got lock, do something)
       (... didn't get lock do something else))
-
+```
 
 <a name="running-zookeeper"></a>
 ## Running ZooKeeper
@@ -273,6 +307,7 @@ Unpack to $ZOOKEEPER_HOME (wherever you would like that to be).
 
 Here's an example conf file for a standalone instance, by default ZooKeeper will look for it in $ZOOKEEPER_HOME/conf/zoo.cfg
 
+```sh
     # The number of milliseconds of each tick
     tickTime=2000
     
@@ -281,13 +316,15 @@ Here's an example conf file for a standalone instance, by default ZooKeeper will
     
     # the port at which the clients will connect
     clientPort=2181
-    
+```
+
 Ensure that the dataDir exists and is writable.
     
 After creating and customizing the conf file, start ZooKeeper
 
+```sh
     $ZOOKEEPER_HOME/bin/zkServer.sh start
-
+```
 
 <a name="contributing" />
 ## Contributing
