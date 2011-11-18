@@ -116,14 +116,20 @@
   (let [point (util/extract-id current-point)]
     (when (and (zero? (mod point cfg/STM-GC-INTERVAL)) (pos? point))
       (future
-        (let [history (drop-last cfg/MAX-STM-HISTORY
-                                 (util/sort-sequential-nodes
-                                  (zk/children client (str cfg/*stm-node* cfg/HISTORY))))]
-          (loop [[h & hs] history]
-            (when h
-              (when (not (current-state? client h RUNNING COMMITTING RETRY COMMITTED))
-                (zk/delete client (str cfg/*stm-node* cfg/HISTORY cfg/NODE-DELIM h)))
-              (recur hs))))))))
+        (try
+          (let [points-to-keep (into #{} (map #(first (parse-version %))
+                                              (mapcat #(zk/children client (str cfg/*stm-node* cfg/REFS cfg/NODE-DELIM % cfg/HISTORY))
+                                                      (zk/children client (str cfg/*stm-node* cfg/REFS)))))
+                history (drop-last cfg/MAX-STM-HISTORY
+                                   (util/sort-sequential-nodes
+                                    (zk/children client (str cfg/*stm-node* cfg/HISTORY))))]
+            (loop [[h & hs] history]
+              (when h
+                (when-not (or (contains? points-to-keep h)
+                              (current-state? client h RUNNING COMMITTING RETRY))
+                  (zk/delete client (str cfg/*stm-node* cfg/HISTORY cfg/NODE-DELIM h)))
+                (recur hs))))
+          (catch Throwable e (println "trim-stm-history failed with exception: " e (.printlnStackTrace e))))))))
 
 (defn get-committed-point-before
   "Gets the committed point before the given one."

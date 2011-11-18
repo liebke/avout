@@ -169,6 +169,7 @@ Now create a distributed atom, you'll need to pass the ZooKeeper client, a ZooKe
 ```
   
 Deref it.
+
 ```clojure
     @a0
 ```
