@@ -15,7 +15,6 @@
     (zk/delete-all client dataNode))
 
   (getState [this]
-    (println "ZKAtomState getState called " dataNode)
     (let [{:keys [data stat]} (zk/data client dataNode)]
       (util/deserialize-form data)))
 

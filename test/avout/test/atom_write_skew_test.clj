@@ -1,4 +1,4 @@
-(ns avout.test.write-skew-test
+(ns avout.test.atom-write-skew-test
   (:use avout.core
         clojure.test))
 
@@ -7,18 +7,17 @@
       (f)
       (/ (double (- (System/nanoTime) start)) 1000000.0)))
 
-  (defn write-skew-test [client c d n]
+  (defn write-skew-test [client a n]
     (let [times (for [i (range n)] (promise))]
-      (dosync!! client (ref-set!! c 0))
-      (dosync!! client (ref-set!! d []))
+      (reset!! a [])
       (dotimes [i n]
         (future
           (try
-            (deliver (nth times i) (timer #(dosync!! client (alter!! d conj (alter!! c inc)))))
-            (catch Throwable e (println "write-skew-test deliver ex: ") (.printStackTrace e)))))
-      [times c d]))
+            (deliver (nth times i) (timer (fn [] (swap!! a #(conj % (inc (count %)))))))
+            (catch Throwable e (println "atom-write-skew-test deliver ex: ") (.printStackTrace e)))))
+      [times a]))
 
-  (defn proces-results [[time-proms c d] n]
+  (defn proces-results [[time-proms a] n]
     (let [times (doall (sort (map #(deref % 500000 -1) time-proms)))
           total-time (last times)
           time-intervals (map (fn [t0 t1] (- t1 t0)) (conj times 0) times)
@@ -29,37 +28,33 @@
        :total-time total-time
        :time-intervals time-intervals
        :time-interval-per-thread time-interval-per-thread
-       :c @c
-       :d @d
-       :pass? (= @c (count @d))
-       :skew-count (- (count @d) @c)
+       :a @a
+       :pass? (= (last @a) (count @a))
+       :skew-count (- (count @a) (last @a))
        :n n
        :avg-time-interval avg-time-interval
        :avg-time-interval-per-thread avg-time-interval-per-thread}))
 
-  (defn analyze-write-skew-test [client c d n]
+  (defn analyze-write-skew-test [client a n]
     (try
-      (let [res (proces-results (write-skew-test client c d n) n)]
-        (if (and (= (:c res) n) (:pass? res))
+      (let [res (proces-results (write-skew-test client a n) n)]
+        (if (and (= (last (:a res)) n) (:pass? res))
           res
           (assoc res :pass? false)))
       (catch Throwable e (println "analyze-write-skew-test: " e (.printStackTrace e)))))
 
-;; results from 1000 run test
-;; prob of write-skew: 0.001
-;; avg-time-interval-per-thread: 63.66
 
 (deftest write-skew
   (let [run-count 100
         max-threads 25
         client (connect "127.0.0.1")
-        c (zk-ref client "/c-test" 0)
-        d (zk-ref client "/d-test" [])
+        a (zk-atom client "/a-test" [])
         test-results (atom [])
         _ (dotimes [i run-count]
             (let [threads (inc (rand-int max-threads))
-                  res (analyze-write-skew-test client c d threads)]
-              (println (str i ": threads " threads ", write-skews " (:skew-count res) ", pass? " (:pass? res)))
+                  res (analyze-write-skew-test client a threads)]
+              (print (str i ": threads " threads ", write-skews " (:skew-count res) ", pass? " (:pass? res)))
+              (println ", values " (:a res))
               (swap! test-results conj res)))
         avg-time-interval-per-thread (/ (apply + (map :avg-time-interval-per-thread @test-results)) (count @test-results))]
     (println (str "total writes: " (reduce + (map :n @test-results))))
