@@ -13,9 +13,9 @@
 <a name="about-avout" />
 ## About Avout
 
-**Avout** extends Clojure's syntax and semantics for managing <a href="http://clojure.org/state">in-memory state</a> to heterogeneous types of distributed state by providing distributed and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a>.
+**Avout** provides distributed-state, Clojure-style by extending Clojure's syntax and semantics for managing <a href="http://clojure.org/state">in-memory state</a> to heterogeneous types of state that span multiple processes/systems by providing distributed and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a>.
 
-*Avout* is built on <a href="http://zookeeper.apache.org">ZooKeeper</a>, with <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>, and also includes distributed implementations of <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/Lock.html">*java.util.concurrent.lock.Lock*</a>, <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/ReadWriteLock.html">*java.util.concurrent.lock.ReadWriteLock*</a>.
+*Avout* uses <a href="http://zookeeper.apache.org">ZooKeeper</a> and <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a> to coordinate state change, and also includes distributed implementations of <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/Lock.html">*java.util.concurrent.lock.Lock*</a>, <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/ReadWriteLock.html">*java.util.concurrent.lock.ReadWriteLock*</a>.
 
 Below is some background on Avout's design, if your interests don't tend toward the philosophy of <a href="http://en.wikipedia.org/wiki/Alfred_North_Whitehead">Alfred North Whitehead</a>, you can jump directly to the <a href="#quick-start">Quick Start Guide</a>.
 
@@ -69,19 +69,40 @@ Likewise, when designing distributed applications, it is desirable to create com
 
 *Avout* Atoms and Refs use <a href="http://zookeeper.apache.org">Apache ZooKeeper</a> to coordinate state change, but not necessarily to hold state. Out of the box, Avout contains an Atom, *zk-atom*, that does also use ZooKeeper data fields to store its state, and two types of Refs, *zk-ref*, also backed by ZooKeeper data fields, and *local-ref*, that is in fact not distributed but provides a mechanism for local Refs to participate in transactions with distributed Refs.
 
+**Extendable**
+
 *Avout* lets you create new types of distributed Atoms and Refs using the **avout.state.StateContainer** and **avout.state.VersionedStateContainer** protocols, respectively; examples of which are the **MongoDB**-backed *mongo-atom* and *mongo-ref*, which can be found in the plugins directory.
 
+**Caching**
+
 *Avout* provides **caching**, so that multiple derefs of the same Atom/Ref will not need to hit either ZooKeeper nor the back-end state-store until the cache has been invalidated by a local or remote update to the Atom or Ref.
+
+**Implements IRef**
 
 *Avout* Atoms and Refs implement Clojure's IRef interface, and therefore support functions that operate on IRefs, including: deref (and its reader-macro, @), set-validator!, add-watch, remove-watch.
 
 *Avout* provides "double-bang" versions of the remaining core Atom and Ref functions (reset!, swap!, dosync, ref-set, alter, commute) for use with distributed Atoms and Refs: **reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!**.
 
+### zk-atom and zk-ref
+
+Both zk-atoms and zk-refs store their state in a ZooKeeper data field as a byte array; deserialization/serialization is performed using Clojure's Reader/Printer (read-str/pr-str). ZooKeeper limits the size of data stored in data fields to 1 megabyte. Because Clojure's printer/reader is used for serialization, only appropriate Clojure data structures can be used as values. However, the ability to implement other back-ends with different serializations schemes is a primary goal of Avout.
+
+### local-ref
+
+The local-ref stores its state in an in-memory Clojure Atom. Because its state is not network accessible, it can only be access from a single JVM, just like in-memory Refs, but unlike in-memory Refs it can participate in transactions with distributed Refs. This provides two benefits, 1) it provides a mechanism for keeping a value that only needs to be available locally in sync with distributed state using dosync!!, 2) since no serialization/deserialization is performed, arbitrary values can be used, including Java objects.
+
+### mongo-atom and mongo-ref
+
+In the plugins directory there is a Leiningen project called mongo-avout, which contains an implementation of a MongoDB-backed Atom, mongo-atom, and Ref, mongo-ref. Both support values consisting of any Clojure data structure supported in MongoDB with the <a href="https://github.com/aboekhoff/congomongo">Congomongo Library</a>.
+
+
 
 <a name="extending-avout" />
 ### Extending Avout Atoms and Refs
 
-**TODO**
+The above three types of Atoms and Refs provide examples for implementing other types that use different back-end state-stores and serialization methods. State-stores may, or may not, provide durability. For instance, zk-atom, zk-ref, mongo-atom, and mongo-ref provide durability promises in addition to atomicity, consistency, and isolation, but local-ref does not. Other durable (e.g. (No)SQL databases, RESTful services) or non-durable (e.g. <a href="http://www.terracotta.org/">Terracotta</a>, RESTful services) can be used as the basis of new types of Atoms and Refs.
+
+New types of Atoms are created by implementing the **avout.state.StateContainer** protocol.
 
     (defprotocol StateContainer
       (initStateContainer [this])
@@ -89,11 +110,23 @@ Likewise, when designing distributed applications, it is desirable to create com
       (getState [this])
       (setState [this value]))
 
+Once you have implemented a *StateContainer*, create a distributed Atom by passing it to the **avout.atoms.distributed-atom** function.
+
+    (defn custom-atom [client name] 
+      (distributed-atom client atom-name custom-state-container))
+
+To create new Ref types, implement **avout.state.VersionedStateContainer**.
+
     (defprotocol VersionedStateContainer
       (initVersionedStateContainer [this])
       (destroyVersionedStateContainer [this])
       (getStateAt [this version])
       (setStateAt [this value version]))
+
+Once you have implemented a *VersionedStateContainer*, create a distributed Ref by passing it to the **avout.refs.distributed-ref** function.
+
+    (defn custom-ref [client name] 
+      (distributed-ref client ref-name custom-versioned-state-container))
 
 
 <a name="quick-start" />
@@ -103,7 +136,9 @@ Likewise, when designing distributed applications, it is desirable to create com
 
 *Avout* provides "double-bang" versions of the remaining core Atom and Ref functions (reset!, swap!, dosync, ref-set, alter, commute) for use with distributed Atoms and Refs: **reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!**.
 
-To get started, you'll need to <a href="#running-zookeeper">run ZooKeeper</a>.
+To get started, you'll need to <a href="#running-zookeeper">run ZooKeeper</a>, and include Avout as a dependency by adding the following to your Leiningen project.clj file:
+
+    [avout "0.5.0-SNAPSHOT"]
 
 Then load the avout.core namespace, and create a ZooKeeper client that will be passed to distributed Refs and Atoms when they are created and to dosync!! transactions when they are performed.
 
@@ -215,16 +250,16 @@ Or use the when-lock and if-lock macros.
       
 The tryLock method can take a timeout duration and units.
 
-    (try (.tryLock lock 10 java.util.concurrent.TimeUnit/SECONDS)
+    (try (.tryLock lock 10 java.util.concurrent.TimeUnit/MILLISECONDS)
       ... do something
       (finally (.unlock lock)))
 
 The macros when-lock-with-timeout and if-lock-with-timeout are also available.
 
-    (when-lock-with-timeout lock
+    (when-lock-with-timeout lock 10 java.util.concurrent.TimeUnit/MILLISECONDS
        (... do something)
        
-    (if-lock-with-timeout lock
+    (if-lock-with-timeout lock 10 java.util.concurrent.TimeUnit/MILLISECONDS
       (... got lock, do something)
       (... didn't get lock do something else))
 
@@ -257,7 +292,7 @@ After creating and customizing the conf file, start ZooKeeper
 <a name="contributing" />
 ## Contributing
 
-Although Avout is not part of Clojure-Contrib, it follows the same guidelines for contributing, which includes signing a Clojure Contributor Agreement (CA) before contributions can be accepted.
+Although Avout is not part of Clojure-Contrib, it follows the same guidelines for contributing, which includes signing a <a href="http://clojure.org/contributing">Clojure Contributor Agreement</a> (CA) before contributions can be accepted.
 
 <a name="references" />
 ## References
@@ -275,6 +310,6 @@ Although Avout is not part of Clojure-Contrib, it follows the same guidelines fo
 
 ## License
 
-Copyright (C) 2011 
+Avout is Copyright © 2011 David Liebke and Relevance, Inc
 
 Distributed under the Eclipse Public License, the same as Clojure.
