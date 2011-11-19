@@ -108,9 +108,11 @@
              h
              (recur hs)))))))
 
-(defn trim-ref-history [client ref-node history-to-remove]
-  (doseq [h history-to-remove]
-    (zk/delete client (str ref-node cfg/HISTORY cfg/NODE-DELIM h) :async? true)))
+(defn trim-ref-history [client ref-node current-point history-to-remove]
+  (let [point (util/extract-id current-point)]
+    (when (and (zero? (mod point cfg/REF-GC-INTERVAL)) (pos? point))
+      (doseq [h history-to-remove]
+        (zk/delete client (str ref-node cfg/HISTORY cfg/NODE-DELIM h) :async? true)))))
 
 (defn trim-stm-history [client current-point]
   (let [point (util/extract-id current-point)]
@@ -140,7 +142,7 @@
          (when-let [[txid commit-pt] (parse-version h)]
            (if (and (<= (util/extract-id commit-pt) point-int)
                     (current-state? client txid COMMITTED))
-             (do (trim-ref-history client ref-node hs)
+             (do (trim-ref-history client ref-node point hs)
                  h)
              (recur hs)))))))
 

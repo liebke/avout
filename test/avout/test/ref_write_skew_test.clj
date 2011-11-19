@@ -15,6 +15,7 @@
         (future
           (try
             (deliver (nth times i) (timer #(dosync!! client (alter!! d conj (alter!! c inc)))))
+            (print ".")
             (catch Throwable e (println "write-skew-test deliver ex: ") (.printStackTrace e)))))
       [times c d]))
 
@@ -50,21 +51,25 @@
 ;; avg-time-interval-per-thread: 63.66
 
 (deftest write-skew
-  (let [run-count 100
-        max-threads 25
+  (let [run-count 1000
+        max-threads 2
         client (connect "127.0.0.1")
         c (zk-ref client "/c-test" 0)
         d (zk-ref client "/d-test" [])
         test-results (atom [])
         _ (dotimes [i run-count]
+            (print i)
             (let [threads (inc (rand-int max-threads))
                   res (analyze-write-skew-test client c d threads)]
-              (println (str i ": threads " threads ", write-skews " (:skew-count res) ", pass? " (:pass? res)))
+              (println (if (:pass? res) "" "FAIL"))
+              ;(println (str i ": threads " threads ", write-skews " (:skew-count res) ", pass? " (:pass? res)))
               (swap! test-results conj res)))
-        avg-time-interval-per-thread (/ (apply + (map :avg-time-interval-per-thread @test-results)) (count @test-results))]
+        avg-time-interval-per-thread (/ (apply + (map :avg-time-interval-per-thread @test-results)) (count @test-results))
+        passed (reduce #(and %1 %2) (map :pass? @test-results))]
+    (println "Result Summary")
     (println (str "total writes: " (reduce + (map :n @test-results))))
     (println (str "total write skews: " (reduce + (map :skew-count @test-results))))
     (println (str "probability of write skew: " (* 1.0 (/ (reduce + (map :skew-count @test-results))
                                                           (reduce + (map :n @test-results))))))
     (println (str "avg-time-interval-per-thread: " avg-time-interval-per-thread " msec"))
-    (is (reduce #(and %1 %2) (map :pass? @test-results)))))
+    (is passed)))

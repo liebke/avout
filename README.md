@@ -22,6 +22,8 @@ Below is some background on Avout's design, if your interests don't tend toward 
 <a name="state-in-clojure" />
 ### Clojure's Philosophy of State Made Distributed
 
+<a href="http://www.flickr.com/photos/paulbarry/2613013337/" title="State - You're Doing It Wrong by Paul Barry, on Flickr"><img src="http://farm4.staticflickr.com/3229/2613013337_bcc9c7857d.jpg" width="500" height="422" alt="State - You're Doing It Wrong"></a>
+
 Rich Hickey has spoken eloquently on <a href="http://clojure.org/state">mutable state</a> in his talk <a href="http://www.infoq.com/presentations/Are-We-There-Yet-Rich-Hickey">"Are We There Yet?"</a>. To summarize, Rich and Alfred North Whitehead don't believe in mutable state, it's an illusion. Rather, there are only successions of causally-linked immutable values, and time is derived from the perception of these successions. Causally-linked means the future is a function of the past; processes apply pure functions to immutable values to derive new immutable values, and we assign identity to these chains of values, and perceive change where there is none. 
 
 As Rich has been <a href="http://www.infoq.com/presentations/Simple-Made-Easy">known to do</a>, he has provided precise, if not familiar, definitions to some familiar words that describe this model of identity, time, and mutable state.
