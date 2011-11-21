@@ -15,7 +15,7 @@
 <a name="about-avout" />
 ## About Avout
 
-It is desirable to design your programs emphasizing pure functions and immutable values, and minimizing wherever possible mutable state. Of course, it's not always possible to completely eliminate the need for mutable state, and that's where having Clojure's clear semantics and mechanisms for updating state becomes powerful.
+Much has been written on functional programming and the desirability of designing programs that emphasize pure functions and immutable values, and that minimize or eliminate, wherever possible, mutable state. Of course, it's not always possible to completely eliminate the need for mutable state, and that's where having Clojure's clear semantics and mechanisms for updating it becomes powerful.
 
 Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where Avout comes in.
 
@@ -62,13 +62,6 @@ Writes, on the other hand, must be coordinated. Since future values are derived 
 
 <img src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time.png" />
 
-
-### Designing with State
-
-Despite having such a precise model of state and time, it is desirable to design your programs with pure functions and immutable values, minimizing wherever possible mutable state. Of course, it's not always possible to completely eliminate state, and that's where having such clear semantics and mechanisms for updating it becomes powerful.
-
-
-Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where Avout Atoms and Refs come in.
 
 <a name="avout-atoms-refs" />
 ### Avout Atoms and Refs
