@@ -1,3 +1,5 @@
+<img width="550" src="https://github.com/liebke/avout/raw/master/docs/images/avout-logo2.png" />
+
 ## Table of Contents
 
 * <a href="#quick-start">Quick Start</a>
@@ -12,6 +14,10 @@
 
 <a name="about-avout" />
 ## About Avout
+
+It is desirable to design your programs emphasizing pure functions and immutable values, and minimizing wherever possible mutable state. Of course, it's not always possible to completely eliminate the need for mutable state, and that's where having Clojure's clear semantics and mechanisms for updating state becomes powerful.
+
+Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where Avout comes in.
 
 **Avout** provides distributed-state, Clojure-style by extending Clojure's syntax and semantics for managing <a href="http://clojure.org/state">in-memory state</a> to heterogeneous types of state that span multiple processes/systems by providing distributed and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a>.
 
