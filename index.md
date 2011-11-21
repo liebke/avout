@@ -1,3 +1,7 @@
+---
+title: Avout: Clojure State Made Distributed
+---
+
 <img width="550" src="https://github.com/liebke/avout/raw/master/docs/images/avout-logo2.png" />
 
 ## Table of Contents
