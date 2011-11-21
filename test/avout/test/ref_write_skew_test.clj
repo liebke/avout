@@ -52,7 +52,7 @@
 
 (deftest write-skew
   (let [run-count 1000
-        max-threads 2
+        max-threads 10
         client (connect "127.0.0.1")
         c (zk-ref client "/c-test" 0)
         d (zk-ref client "/d-test" [])

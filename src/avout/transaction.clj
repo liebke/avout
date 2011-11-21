@@ -229,15 +229,13 @@
        (.setStateAt (.refState r) (get values r) point)))))
 
 (defn reincarnate-txn [txn]
-  (println "reincarnating txn: " (deref (.txid txn)))
   (reset! (.txid txn) (next-point (.client txn)))
-  (update-txn-state txn RETRY) ;;(update-state (.client txn) (deref (.txid txn)) RETRY)
-  )
+  (update-txn-state txn RETRY))
 
 (defn stop [txn]
   (when-not (current-state? (.client txn) (deref (.txid txn)) COMMITTED)
     (try
-      (update-txn-state txn RETRY) ;;(update-state (.client txn) (deref (.txid txn)) RETRY)
+      (update-txn-state txn RETRY)
       (catch KeeperException$NoNodeException e
         (reincarnate-txn txn)))
     (reset! (.values txn) {})
@@ -251,8 +249,7 @@
 
 (defn invalidate-cache-and-retry [txn ref]
   (.invalidateCache ref)
-  (block-and-bail txn) ; (throw retryex)
-  )
+  (block-and-bail txn))
 
 (defn update-caches [txn]
   (let [values (deref (.values txn))]
@@ -276,11 +273,9 @@
                     (if-let [v (and cfg/*use-cache* (= commit-point (.cachedVersion ref)) (.getCache ref))]
                       v
                       (.setCacheAt ref (.getStateAt (.refState ref) commit-point) commit-point)))))))
-      (block-and-bail this) ;(throw retryex)
-      ))
+      (block-and-bail this)))
 
   (doSet [this ref value]
-    ;;(invalidate-cache-and-retry this ref) ;; need to not use cache when a doSet follows the doGet
     (if (running? this)
       (do
         (when-not (contains? @sets ref)
@@ -288,8 +283,7 @@
           (swap! sets conj ref))
         (swap! values assoc ref value)
         value)
-      (block-and-bail this)           ; (throw retryex)
-      ))
+      (block-and-bail this)))
 
   (doCommute [this f args]
     ;; TODO
@@ -311,19 +305,18 @@
               (reset! txid @readPoint)
               (reset! startPoint @readPoint)
               (reset! startTime (System/nanoTime)))
-            (update-txn-state this RUNNING) ;;(update-state client @txid RUNNING)
+            (update-txn-state this RUNNING)
             (reset! returnValue (f))
-            (when (update-txn-state this RUNNING COMMITTING) ;;(update-state client @txid RUNNING COMMITTING)
+            (when (update-txn-state this RUNNING COMMITTING)
               ;(process-commutes this) ;; TODO
               (validate-values this)
               (reset! commitPoint (next-point client))
               (update-values this)
               (trigger-watches this)
-              (update-txn-state this COMMITTED) ;;(update-state client @txid COMMITTED)
+              (update-txn-state this COMMITTED)
               (trim-stm-history client @commitPoint)
               (update-caches this))
-            (catch Error e (when-not (retryex? e)
-                             (throw e)))
+            (catch Error e (when-not (retryex? e) (throw e)))
             (finally (stop this)))
           (when-not (current-state? client @txid COMMITTED)
             (recur (inc retry-count))))
