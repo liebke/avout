@@ -3,7 +3,7 @@
 
 <style type="text/css">
 
-  body {font-family: Garamond, Bodoni, "Times New Roman"; background-color: #ffffff; padding: 5px; font-size: 1.2em; color: #333333; }
+  body {font-family: Garamond, Bodoni, "Times New Roman"; background-color: #333333; padding-top: 0px; font-size: 1.2em; color: #333333; }
   h1 { font-family: Garamond, Georgia, serif; color: #000066; }
   h2 { font-family: Helvetica, Gill, sans-serif; color: #000066; }
   h3, h4 { color: #444444; }
@@ -13,8 +13,9 @@
   .code-listing { background-color: #FFFFFF; color: #444444; border: #EEEEEE 1px solid;  padding-bottom: 1px; padding-left: 5px; border-bottom: #DDDDDD 1px solid; border-right: #DDDDDD 1px solid; font-size: 1em }
   .quote { background-color: #F8F8F8; color: #555555; font-style:italic; padding-left: 25px; padding-right: 25px; width: 500px; margin: 15px; }
 code { color: #555555; }
-  .content { width: 675px; margin: 0px auto; }
-  p { text-align: left; }
+  .content { background-color: #ffffff; width: 750px; margin: 0px auto; }
+  .content-frame { padding-top: 10px; padding-bottom: 30px; background: #ffffff; width: 900px; margin: 0px auto; }
+  p { text-align: justify; }
   .box { background-color: #DDDDDD; color: #333333; padding-left:
   15px; padding-top: 15px; padding-bottom: 15px;  border: #CCCCCC 1px
   solid; border-bottom: #CCCCCC 1px solid; border-right: #CCCCCC 1px
@@ -31,6 +32,7 @@ code { color: #555555; }
 </head>
 
 <body>
+<div class="content-frame">
 
 <link href="http://alexgorbatchev.com/pub/sh/current/styles/shCore.css" rel="stylesheet" type="text/css" />
 <link href="http://alexgorbatchev.com/pub/sh/current/styles/shThemeDefault.css" rel="stylesheet" type="text/css" />
@@ -52,11 +54,9 @@ code { color: #555555; }
 <div class="content">
 
 
-<p>
-<img width="550" src="https://github.com/liebke/avout/raw/master/docs/images/avout-logo2.png" />
-</p>
+<p><center><img width="550" src="https://github.com/liebke/avout/raw/master/docs/images/avout-logo2.png" /></center></p>
 
-<ul>
+<ol>
 <li><a href="#quick-start">Quick Start</a></li>
 
 <li><a href="#about-avout">About Avout</a></li>
@@ -75,16 +75,16 @@ code { color: #555555; }
 
 <li><a href="#references">References</a></li>
 
-</ul>
+</ol>
 
 <p><a name="about-avout" /></p>
 <h2>About Avout</h2>
 
 <p>Much has been written on functional programming and the desirability of designing programs that emphasize pure functions and immutable values, and that minimize or eliminate, wherever possible, mutable state. Of course, it's not always possible to completely eliminate the need for mutable state, and that's where having Clojure's clear semantics and mechanisms for updating it becomes powerful.</p>
 
-<p>Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where Avout comes in.</p>
+<p>Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where <a href="https://github.com/liebke/avout">Avout</a> comes in.</p>
 
-<p><strong>Avout</strong> provides distributed-state, Clojure-style by extending Clojure's syntax and semantics for managing <a href="http://clojure.org/state">in-memory state</a> to heterogeneous types of state that span multiple processes/systems by providing distributed and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a>.</p>
+<p><em>Avout</em> provides distributed-state, Clojure-style by extending Clojure's syntax and semantics for managing <a href="http://clojure.org/state">in-memory state</a> to heterogeneous types of state that span multiple processes/systems by providing distributed and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a>.</p>
 
 <p><em>Avout</em> uses <a href="http://zookeeper.apache.org">ZooKeeper</a> and <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a> to coordinate state change, and also includes distributed implementations of <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/Lock.html"><em>java.util.concurrent.lock.Lock</em></a>, <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/ReadWriteLock.html"><em>java.util.concurrent.lock.ReadWriteLock</em></a>.</p>
 
@@ -93,7 +93,9 @@ code { color: #555555; }
 <a name="state-in-clojure" />
 <h2>Clojure's Philosophy of State Made Distributed</h2>
 
-<p><a href="http://www.flickr.com/photos/paulbarry/2613013337/" title="State - You're Doing It Wrong by Paul Barry, on Flickr"><img width="550" src="http://farm4.staticflickr.com/3229/2613013337_bcc9c7857d.jpg" width="500" height="422" alt="State - You're Doing It Wrong"></a></p>
+<!--
+<p><center><a href="http://www.flickr.com/photos/paulbarry/2613013337/" title="State - You're Doing It Wrong by Paul Barry, on Flickr"><img width="550" src="http://farm4.staticflickr.com/3229/2613013337_bcc9c7857d.jpg" width="500" height="422" alt="State - You're Doing It Wrong"></a></center></p>
+-->
 
 <p>Rich Hickey has spoken eloquently on <a href="http://clojure.org/state">mutable state</a> in his talk <a href="http://www.infoq.com/presentations/Are-We-There-Yet-Rich-Hickey">"Are We There Yet?"</a>. To summarize, Rich and Alfred North Whitehead don't believe in mutable state, it's an illusion. Rather, there are only successions of causally-linked immutable values, and time is derived from the perception of these successions. Causally-linked means the future is a function of the past; processes apply pure functions to immutable values to derive new immutable values, and we assign identity to these chains of values, and perceive change where there is none.</p>
 
@@ -116,7 +118,7 @@ code { color: #555555; }
 
 <p>Writes, on the other hand, must be coordinated. Since future values are derived by applying functions to an identity's most recent immutable value, writes must be atomic. Two processes that observe the same value for an identity cannot both write new values, one will win and the other will have to read the latest value and try its write again. Below is an illustration of how Clojure's, and Avout's, STM performs updates to a Ref's state with two contending writers.</p>
 
-<p><img width="700" src="https://github.com/liebke/avout/raw/master/docs/images/stm.png" /></p>
+<p><center><img width="700" src="https://github.com/liebke/avout/raw/master/docs/images/stm.png" /></center></p>
 
 <ol>
 <li><em>Thread-1</em> creates a Ref, <strong>r</strong>, at time <strong>t0</strong> with a value of 0</li>
@@ -139,7 +141,7 @@ code { color: #555555; }
 
 <p><strong>TODO</strong></p>
 
-<p><img width="700" src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time.png" /></p>
+<p><center><img width="700" src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time.png" /></center></p>
 
 <p><a name="avout-atoms-refs" /></p>
 
@@ -225,11 +227,9 @@ code { color: #555555; }
 
 <h2>Quick Start</h2>
 
-<p><em>Avout</em> Atoms and Refs implement Clojure's IRef interface, and therefore support functions that operate on IRefs, including: deref (and its reader-macro, @), set-validator!, add-watch, remove-watch.</p>
+<p><em>Avout</em> Atoms and Refs implement Clojure's IRef interface, and therefore support functions that operate on IRefs, including: deref (and its reader-macro, @), set-validator!, add-watch, remove-watch. <em>Avout</em> provides "double-bang" versions of the remaining core Atom and Ref functions (<a href="http://clojuredocs.org/clojure_core/clojure.core/reset!">reset!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/swap!">swap!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/dosync">dosync</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/ref-set">ref-set</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/alter">alter</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/commute">commute</a>) for use with distributed Atoms and Refs: <strong>reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!</strong>.</p>
 
-<p><em>Avout</em> provides "double-bang" versions of the remaining core Atom and Ref functions (reset!, swap!, dosync, ref-set, alter, commute) for use with distributed Atoms and Refs: <strong>reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!</strong>.</p>
-
-<p>To get started, you'll need to <a href="#running-zookeeper">run ZooKeeper</a>, and include Avout as a dependency by adding the following to your Leiningen project.clj file:</p>
+<p>Avout is available on Github, <a href="https://github.com/liebke/avout">https://github.com/liebke/avout</a>. To get started, you'll need to <a href="#running-zookeeper">run ZooKeeper</a>, and include Avout as a dependency by adding the following to your Leiningen project.clj file:</p>
 
 <pre class="brush: clojure">
 [avout "0.5.0-SNAPSHOT"]
@@ -331,7 +331,7 @@ Alter both Refs within a dosync!! block.
 
 <p>The avout.locks namespace contains an implementation of java.util.concurrent.locks.Lock, called ZKDistributedReentrantLock, and an implementation of java.util.concurrent.locks.ReadWriteLock, called ZKDistributedReentrantReadWriteLock.</p>
 
-<p><img width="700" src="https://github.com/liebke/avout/raw/master/docs/images/locks.png" /></p>
+<p><center><img width="700" src="https://github.com/liebke/avout/raw/master/docs/images/locks.png" /></center></p>
 
 <h3>Examples</h3>
 
@@ -476,6 +476,8 @@ $ZOOKEEPER_HOME/bin/zkServer.sh start
 <h2>References</h2>
 
 <ul>
+<li><a href="https://github.com/liebke/avout">Avout on Github</a></li>
+
 <li><a href="http://www.infoq.com/presentations/Are-We-There-Yet-Rich-Hickey">"Are We There Yet?"</a></li>
 
 <li><a href="http://clojure.org/state">Clojure State</a></li>
@@ -502,5 +504,6 @@ $ZOOKEEPER_HOME/bin/zkServer.sh start
 
 <p>Distributed under the Eclipse Public License, the same as Clojure.</p>
 
+</div>
 </div>
 </body>
