@@ -79,9 +79,9 @@ code { color: #555555; }
 
 <p>Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where <a href="https://github.com/liebke/avout">Avout</a> comes in.</p>
 
-<p><em>Avout</em> provides distributed-state, Clojure-style by extending Clojure's syntax and semantics for managing <a href="http://clojure.org/state">in-memory state</a> to heterogeneous types of state that span multiple processes and/or systems by providing distributed and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a>.</p>
+<p><em>Avout</em> provides distributed-state, Clojure-style by extending Clojure's syntax and semantics for managing in-memory state to heterogeneous types of state that span multiple processes and/or systems by providing distributed and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a>.</p>
 
-<p><em>Avout</em> uses <a href="http://zookeeper.apache.org">ZooKeeper</a> and <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a> to coordinate state change, and also includes distributed implementations of <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/Lock.html"><em>java.util.concurrent.lock.Lock</em></a>, <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/ReadWriteLock.html"><em>java.util.concurrent.lock.ReadWriteLock</em></a>.</p>
+<p><em>Avout</em> uses <a href="http://zookeeper.apache.org">ZooKeeper</a> and <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a> to coordinate state change, and also includes distributed implementations of <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/Lock.html"><em>java.util.concurrent.lock.Lock</em></a> and <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/ReadWriteLock.html"><em>java.util.concurrent.lock.ReadWriteLock</em></a>.</p>
 
 <p>Below is some background on Avout's design, if your interests don't tend toward the philosophy of <a href="http://en.wikipedia.org/wiki/Alfred_North_Whitehead">Alfred North Whitehead</a>, you can jump directly to the <a href="#quick-start">Quick Start Guide</a>.</p>
 
@@ -193,7 +193,7 @@ code { color: #555555; }
 <p>Once you have implemented a <em>StateContainer</em>, create a distributed Atom by passing it to the <strong>avout.atoms.distributed-atom</strong> function.</p>
 
 <pre class="brush: clojure">
-(defn custom-atom [client name] 
+(defn custom-atom [client atom-name] 
   (distributed-atom client atom-name custom-state-container))
 
 </pre>
@@ -213,7 +213,7 @@ code { color: #555555; }
 <p>Once you have implemented a <em>VersionedStateContainer</em>, create a distributed Ref by passing it to the <strong>avout.refs.distributed-ref</strong> function.</p>
 
 <pre class="brush: clojure">
-(defn custom-ref [client name] 
+(defn custom-ref [client ref-name] 
   (distributed-ref client ref-name custom-versioned-state-container))
 
 </pre>
@@ -261,7 +261,7 @@ code { color: #555555; }
 
 </pre>
 
-<p>Then you can use the swap!! and reset!! functions just as you would Clojure's built-in swap! and reset! functions, except you will need to pass the ZooKeeper client as the first parameter.</p>
+<p>Then you can use the swap!! and reset!! functions just as you would Clojure's built-in swap! and reset! functions.</p>
 
 <pre class="brush: clojure">
 (swap!! a0 inc)
