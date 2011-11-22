@@ -108,11 +108,12 @@
              h
              (recur hs)))))))
 
-(defn trim-ref-history [client ref-node current-point history-to-remove]
+(defn trim-ref-history [ref current-point history-to-remove]
   (let [point (util/extract-id current-point)]
     (when (and (zero? (mod point cfg/REF-GC-INTERVAL)) (pos? point))
       (doseq [h history-to-remove]
-        (zk/delete client (str ref-node cfg/HISTORY cfg/NODE-DELIM h) :async? true)))))
+        (zk/delete (.client ref) (str (.getName ref) cfg/HISTORY cfg/NODE-DELIM h) :async? true)
+        (.deleteStateAt (.refState ref) h)))))
 
 (defn trim-stm-history [client current-point]
   (let [point (util/extract-id current-point)]
@@ -135,14 +136,14 @@
 
 (defn get-committed-point-before
   "Gets the committed point before the given one."
-  ([client ref-node point]
-     (let [history (util/sort-sequential-nodes > (get-history client ref-node))
+  ([ref point]
+     (let [history (util/sort-sequential-nodes > (get-history (.client ref) (.getName ref)))
            point-int (util/extract-id point)]
        (loop [[h & hs] history]
          (when-let [[txid commit-pt] (parse-version h)]
            (if (and (<= (util/extract-id commit-pt) point-int)
-                    (current-state? client txid COMMITTED))
-             (do (trim-ref-history client ref-node point hs)
+                    (current-state? (.client ref) txid COMMITTED))
+             (do (trim-ref-history ref point hs)
                  h)
              (recur hs)))))))
 
@@ -266,7 +267,7 @@
     (if (running? this)
       (or (get @values ref)
           (do (sync-ref ref)
-              (let [commit-point (get-committed-point-before client (.getName ref) @readPoint)]
+              (let [commit-point (get-committed-point-before ref @readPoint)]
                 (if (behind-committing-point? ref commit-point)
                   (block-and-bail this)
                   (when commit-point

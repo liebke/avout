@@ -20,5 +20,10 @@
       (util/deserialize-form data)))
 
   (setStateAt [this value version]
-    (zk/set-data client (str name cfg/HISTORY cfg/NODE-DELIM version) (util/serialize-form value) -1)))
+    (zk/set-data client (str name cfg/HISTORY cfg/NODE-DELIM version) (util/serialize-form value) -1))
+
+  (deleteStateAt [this version]
+    ;; This method doesn't need to clean up, because Avout's GC cleans
+    ;; up the data as a side effect of trimming the Ref's history.
+    nil))
 

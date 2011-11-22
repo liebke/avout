@@ -18,5 +18,8 @@
     (get @state version))
 
   (setStateAt [this value version]
-    (swap! state assoc version value)))
+    (swap! state assoc version value))
+
+  (deleteStateAt [this version]
+    (swap! state dissoc version)))
 

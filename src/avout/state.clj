@@ -19,7 +19,8 @@
   (initVersionedStateContainer [this])
   (destroyVersionedStateContainer [this])
   (getStateAt [this version])
-  (setStateAt [this value version]))
+  (setStateAt [this value version])
+  (deleteStateAt [this version]))
 
 (defprotocol StateCache
   (setCache [this value])

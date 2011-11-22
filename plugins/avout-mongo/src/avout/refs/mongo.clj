@@ -20,6 +20,10 @@
     (let [data (if value
                  {:name name :value value :point point}
                  {:name name :point point})]
-      (mongo/with-mongo conn (mongo/insert! :refs data)))))
+      (mongo/with-mongo conn (mongo/insert! :refs data))))
+
+  (deleteStateAt [this version]
+    (mongo/with-mongo conn
+      (mongo/destroy! :refs :where {:name name, :point version}))))
 
 
