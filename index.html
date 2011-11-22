@@ -75,11 +75,11 @@ code { color: #555555; }
 <p><a name="overview" /></p>
 <h2>Overview</h2>
 
-<p>Much has been written on functional programming and the advantages of designing programs that emphasize pure functions and immutable values, and that minimize or eliminate, wherever possible, mutable state. Of course, it's not always possible to completely eliminate the need for mutable state, and that's where having Clojure's clear semantics and mechanisms for updating it becomes powerful.</p>
+<p>Much has been written on functional programming and the advantages of designing programs that emphasize pure functions and immutable values, and that minimize or eliminate, wherever possible, mutable state. Of course, it's not always possible to completely eliminate the need for mutable state, and that's where Clojure's precise <a href="http://clojure.org/state">model of time, identity, and state</a> becomes powerful.</p>
 
 <p>Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where <a href="https://github.com/liebke/avout">Avout</a> comes in.</p>
 
-<p><em>Avout</em> provides distributed-state, Clojure-style by extending Clojure's syntax and semantics for managing <a href="http://clojure.org/state">in-memory state</a> to heterogeneous types of state that span multiple processes/systems by providing distributed and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a>.</p>
+<p><em>Avout</em> provides distributed-state, Clojure-style by extending Clojure's syntax and semantics for managing <a href="http://clojure.org/state">in-memory state</a> to heterogeneous types of state that span multiple processes and/or systems by providing distributed and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a>.</p>
 
 <p><em>Avout</em> uses <a href="http://zookeeper.apache.org">ZooKeeper</a> and <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a> to coordinate state change, and also includes distributed implementations of <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/Lock.html"><em>java.util.concurrent.lock.Lock</em></a>, <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/ReadWriteLock.html"><em>java.util.concurrent.lock.ReadWriteLock</em></a>.</p>
 
