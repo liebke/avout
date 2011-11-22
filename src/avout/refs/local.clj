@@ -14,7 +14,6 @@
   (destroyVersionedStateContainer [this] (reset! state {}))
 
   (getStateAt [this version]
-    (println "RefState getStateAt called " name version)
     (get @state version))
 
   (setStateAt [this value version]

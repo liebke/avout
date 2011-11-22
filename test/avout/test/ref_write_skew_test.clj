@@ -50,7 +50,8 @@
 ;; prob of write-skew: 0.001
 ;; avg-time-interval-per-thread: 63.66
 
-(deftest write-skew
+(deftest zk-ref-write-skew
+  (println "running zk-ref-write-skew test...")
   (let [run-count 100
         max-threads 10
         client (connect "127.0.0.1")
@@ -66,7 +67,31 @@
               (swap! test-results conj res)))
         avg-time-interval-per-thread (/ (apply + (map :avg-time-interval-per-thread @test-results)) (count @test-results))
         passed (reduce #(and %1 %2) (map :pass? @test-results))]
-    (println "Result Summary")
+    (println "Result Summary: zk-ref")
+    (println (str "total writes: " (reduce + (map :n @test-results))))
+    (println (str "total write skews: " (reduce + (map :skew-count @test-results))))
+    (println (str "probability of write skew: " (* 1.0 (/ (reduce + (map :skew-count @test-results))
+                                                          (reduce + (map :n @test-results))))))
+    (println (str "avg-time-interval-per-thread: " avg-time-interval-per-thread " msec"))
+    (is passed)))
+
+(deftest local-ref-write-skew
+  (println "running local-ref-write-skew test...")
+  (let [run-count 100
+        max-threads 10
+        client (connect "127.0.0.1")
+        c (local-ref client "/c-test" 0)
+        d (local-ref client "/d-test" [])
+        test-results (atom [])
+        _ (dotimes [i run-count]
+            (print i)
+            (let [threads (inc (rand-int max-threads))
+                  res (analyze-write-skew-test client c d threads)]
+              (println (if (:pass? res) "" "FAIL"))
+              (swap! test-results conj res)))
+        avg-time-interval-per-thread (/ (apply + (map :avg-time-interval-per-thread @test-results)) (count @test-results))
+        passed (reduce #(and %1 %2) (map :pass? @test-results))]
+    (println "Result Summary: local-ref")
     (println (str "total writes: " (reduce + (map :n @test-results))))
     (println (str "total write skews: " (reduce + (map :skew-count @test-results))))
     (println (str "probability of write skew: " (* 1.0 (/ (reduce + (map :skew-count @test-results))
