@@ -4,8 +4,8 @@
 <style type="text/css">
 
   body {font-family: Garamond, Bodoni, "Times New Roman"; background-color: #333333; padding-top: 0px; font-size: 1.2em; color: #333333; }
-  h1 { font-family: Garamond, Georgia, serif; color: #000066; }
-  h2 { font-family: Helvetica, Gill, sans-serif; color: #000066; }
+  h1 { font-family: Garamond, Georgia, serif; color: #666666; }
+  h2 { font-family: Helvetica, Gill, sans-serif; color: #666666; }
   h3, h4 { color: #444444; }
   li {padding-left: 25px; padding-right: 25px; padding-top: 5px; }
   .code-ref { background-color: #F8F8F8; color: #003399; font-style:italic; padding-left: 5px; padding-right: 5px; font-size: 0.9em; }
@@ -29,7 +29,7 @@ code { color: #555555; }
   .insert { font-weight: bold; font-style: italic; color:#33a933;}
 
   .menu { margin-bottom: 5px; margin-top: 5px; padding-left:0px; padding-right:0px; }
-  .menu-item { margin-left: 25px; color: #ffffff; font-family: Helvetica, Gill, sans-serif; color: #000066; font-size: 0.9em; display: inline; }
+  .menu-item { margin-left: 0px; color: #ffffff; font-family: Helvetica, Gill, sans-serif; color: #000066; font-size: 0.9em; display: inline; }
   a.menu { color: #999999; text-decoration: none; }
 </style>
 
@@ -43,6 +43,7 @@ code { color: #555555; }
 <li class="menu-item"><a class="menu" href="#quick-start">Quick Start</a></li>
 <li class="menu-item"><a class="menu" href="#avout-atoms-refs">Distributed Atoms & Refs</a></li>
 <li class="menu-item"><a class="menu" href="#locks">Distributed Locks</a></li>
+<li class="menu-item"><a class="menu" href="https://github.com/liebke/avout">Source Code</a></li>
 </ul>
 </div>
 
@@ -68,7 +69,7 @@ code { color: #555555; }
 <div class="content">
 
 
-<p><center><img width="550" src="https://github.com/liebke/avout/raw/master/docs/images/avout-logo2.png" /></center></p>
+<p><center><img width="550" src="images/avout-logo.png" /></center></p>
 
 
 <p><a name="overview" /></p>
@@ -223,14 +224,14 @@ code { color: #555555; }
 
 <p><em>Avout</em> Atoms and Refs implement Clojure's IRef interface, and therefore support functions that operate on IRefs, including: deref (and its reader-macro, @), set-validator!, add-watch, remove-watch. <em>Avout</em> provides "double-bang" versions of the remaining core Atom and Ref functions (<a href="http://clojuredocs.org/clojure_core/clojure.core/reset!">reset!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/swap!">swap!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/dosync">dosync</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/ref-set">ref-set</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/alter">alter</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/commute">commute</a>) for use with distributed Atoms and Refs: <strong>reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!</strong>.</p>
 
-<p>Avout is available on Github, <a href="https://github.com/liebke/avout">https://github.com/liebke/avout</a>. To get started, you'll need to <a href="#running-zookeeper">run ZooKeeper</a>, and include Avout as a dependency by adding the following to your Leiningen project.clj file:</p>
+<p>Avout is available on Github, <a href="https://github.com/liebke/avout">https://github.com/liebke/avout</a>. To get started, you'll need to <a href="#running-zookeeper">run ZooKeeper</a>, and include Avout as a dependency by adding the following to your project.clj file:</p>
 
 <pre class="brush: clojure">
 [avout "0.5.0-SNAPSHOT"]
 
 </pre>
 
-<p>Then load the avout.core namespace, and create a ZooKeeper client that will be passed to distributed Refs and Atoms when they are created and to dosync!! transactions when they are performed.</p>
+<p>Then load the <a href="https://github.com/liebke/avout/blob/master/src/avout/core.clj">avout.core namespace</a>, and create a ZooKeeper client that will be passed to distributed Refs and Atoms when they are created and to dosync!! transactions when they are performed.</p>
 
 <pre class="brush: clojure">
 (use 'avout.core)
