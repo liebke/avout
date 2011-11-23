@@ -53,7 +53,7 @@ code { color: #555555; }
 <div align="center" style="padding-bottom: 0px">
 <ul class="menu">
 <li class="menu-item"><a class="menu" href="#overview">Overview</a></li>
-<li class="menu-item"><a class="menu" href="#quick-start">Quick Start</a></li>
+<li class="menu-item"><a class="menu" href="#tutorial">Tutorial</a></li>
 <li class="menu-item"><a class="menu" href="#avout-atoms-refs">Distributed Atoms & Refs</a></li>
 <li class="menu-item"><a class="menu" href="#locks">Distributed Locks</a></li>
 <li class="menu-item"><a class="menu" href="https://github.com/liebke/avout">Source Code</a></li>
@@ -96,7 +96,7 @@ code { color: #555555; }
 
 <p><em>Avout</em> uses <a href="http://zookeeper.apache.org">ZooKeeper</a> and <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a> to coordinate state change, and also includes distributed implementations of <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/Lock.html"><em>java.util.concurrent.lock.Lock</em></a> and <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/ReadWriteLock.html"><em>java.util.concurrent.lock.ReadWriteLock</em></a>.</p>
 
-<p>Below is some background on Avout's design, if your interests don't tend toward the philosophy of <a href="http://en.wikipedia.org/wiki/Alfred_North_Whitehead">Alfred North Whitehead</a>, you can jump directly to the <a href="#quick-start">Quick Start Guide</a>.</p>
+<p>Below is some background on Avout's design, if your interests don't tend toward the philosophy of <a href="http://en.wikipedia.org/wiki/Alfred_North_Whitehead">Alfred North Whitehead</a>, you can jump directly to the <a href="#tutorial">tutorial</a>.</p>
 
 <a name="state-in-clojure" />
 <h3>Clojure's Philosophy of State</h3>
@@ -232,8 +232,8 @@ code { color: #555555; }
 
 </pre>
 
-<a name="quick-start" />
-<h2>Quick Start</h2>
+<a name="tutorial" />
+<h2>Tutorial</h2>
 
 <p><em>Avout</em> Atoms and Refs implement Clojure's IRef interface, and therefore support functions that operate on IRefs, including: deref (and its reader-macro, @), set-validator!, add-watch, remove-watch. <em>Avout</em> provides "double-bang" versions of the remaining core Atom and Ref functions (<a href="http://clojuredocs.org/clojure_core/clojure.core/reset!">reset!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/swap!">swap!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/dosync">dosync</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/ref-set">ref-set</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/alter">alter</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/commute">commute</a>) for use with distributed Atoms and Refs: <strong>reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!</strong>.</p>
 
@@ -484,7 +484,7 @@ $ZOOKEEPER_HOME/bin/zkServer.sh start
 <ul>
 <li><a href="https://github.com/liebke/avout">Avout on Github</a></li>
 
-<li><a href="http://www.infoq.com/presentations/Are-We-There-Yet-Rich-Hickey">"Are We There Yet?"</a></li>
+<li><a href="http://www.infoq.com/presentations/Are-We-There-Yet-Rich-Hickey">Are We There Yet?</a></li>
 
 <li><a href="http://clojure.org/state">Clojure State</a></li>
 
