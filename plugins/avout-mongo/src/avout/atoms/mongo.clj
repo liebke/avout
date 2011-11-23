@@ -3,7 +3,7 @@
   (:require [avout.atoms :as atoms]
             [somnium.congomongo :as mongo]))
 
-(deftype MongoAtomState [conn name] ;; add reference _id field to type, so it doesn't have to be retrieved
+(deftype MongoStateContainer [conn name]
 
   StateContainer
 

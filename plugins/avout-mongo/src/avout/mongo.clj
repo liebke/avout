@@ -1,33 +1,36 @@
 (ns avout.mongo
+  (:use avout.core)
   (:require [avout.refs :as refs]
             [avout.atoms :as atoms]
+            avout.refs.mongo
+            avout.atoms.mongo
             [somnium.congomongo :as mongo]))
 
 (defn mongo-ref
   ([zk-client mongo-conn name init-value & {:keys [validator]}]
      (let [r (doto (mongo-ref zk-client mongo-conn name)
                (set-validator! validator))]
-       (refs/dosync!! zk-client (refs/ref-set!! r init-value))
+       (dosync!! zk-client (ref-set!! r init-value))
        r))
   ([zk-client mongo-conn name]
      (mongo/with-mongo mongo-conn
        (let [r (mongo/with-mongo mongo-conn
                  (or (mongo/fetch-one :refs :where {:name name})
                      (mongo/insert! :refs {:name name}))
-                 (refs/distributed-ref zk-client name (avout.refs.mongo.MongoRefState. mongo-conn name)))]
-         (refs/dosync!! zk-client (refs/ref-set!! r nil))
+                 (refs/distributed-ref zk-client name (avout.refs.mongo.MongoVersionedStateContainer. mongo-conn name)))]
+         (dosync!! zk-client (ref-set!! r nil))
          r))))
 
 
 (defn mongo-atom
   ([zk-client mongo-conn name init-value & {:keys [validator]}]
-     (doto (atoms/distributed-atom zk-client name (avout.atoms.mongo.MongoAtomState. mongo-conn name))
+     (doto (atoms/distributed-atom zk-client name (avout.atoms.mongo.MongoStateContainer. mongo-conn name))
        (set-validator! validator)
        (.reset init-value)))
   ([zk-client mongo-conn name]
      (mongo/with-mongo mongo-conn
        (if (mongo/fetch-one :atoms :where {:name name})
-         (atoms/distributed-atom zk-client name (avout.atoms.mongo.MongoAtomState. mongo-conn name))
+         (atoms/distributed-atom zk-client name (avout.atoms.mongo.MongoStateContainer. mongo-conn name))
          (throw (RuntimeException. "Either provide a name of an existing distributed atom, or provide an intial value"))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

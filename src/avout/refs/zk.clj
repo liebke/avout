@@ -3,7 +3,8 @@
   (:require [zookeeper :as zk]
             [zookeeper.data :as data]
             [avout.config :as cfg]
-            [avout.util :as util]))
+            [avout.util :as util]
+            [avout.transaction :as tx]))
 
 ;; ZK data implementation
 
@@ -16,8 +17,11 @@
   (destroyVersionedStateContainer [this] nil)
 
   (getStateAt [this version]
-    (let [{:keys [data stat]} (zk/data client (str name cfg/HISTORY cfg/NODE-DELIM version))]
-      (util/deserialize-form data)))
+    (try
+      (let [{:keys [data stat]} (zk/data client (str name cfg/HISTORY cfg/NODE-DELIM version))]
+        (util/deserialize-form data))
+      ;; in the rare event that the requested value has already been GCed, throw retryex
+      (catch org.apache.zookeeper.KeeperException$NoNodeException e (throw tx/retryex))))
 
   (setStateAt [this value version]
     (zk/set-data client (str name cfg/HISTORY cfg/NODE-DELIM version) (util/serialize-form value) -1))

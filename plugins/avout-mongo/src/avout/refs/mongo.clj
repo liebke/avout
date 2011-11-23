@@ -1,8 +1,9 @@
 (ns avout.refs.mongo
   (:use avout.state)
-  (:require [somnium.congomongo :as mongo]))
+  (:require [somnium.congomongo :as mongo]
+            [avout.transaction :as tx]))
 
-(deftype MongoRefState [conn name]
+(deftype MongoVersionedStateContainer [conn name]
 
   VersionedStateContainer
 
@@ -10,11 +11,13 @@
 
   (destroyVersionedStateContainer [this]
     (mongo/with-mongo conn
-      (mongo/destroy! :refs :where {:name name})))
+      (mongo/destroy! :refs {:name name})))
 
   (getStateAt [this point]
-    (:value (mongo/with-mongo conn
-              (mongo/fetch-one :refs :where {:name name :point point}))))
+    (if-let [res (mongo/with-mongo conn
+                   (mongo/fetch-one :refs :where {:name name :point point}))]
+      (:value res)
+      (throw tx/retryex)))
 
   (setStateAt [this value point]
     (let [data (if value
@@ -24,6 +27,6 @@
 
   (deleteStateAt [this version]
     (mongo/with-mongo conn
-      (mongo/destroy! :refs :where {:name name, :point version}))))
+      (mongo/destroy! :refs {:name name, :point version}))))
 
 

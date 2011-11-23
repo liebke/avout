@@ -14,7 +14,10 @@
   (destroyVersionedStateContainer [this] (reset! state {}))
 
   (getStateAt [this version]
-    (get @state version))
+    (if (contains? @state version)
+      (get @state version)
+      ;; in the rare event that the requested value has been GCed, throw retryex
+      (throw tx/retryex)))
 
   (setStateAt [this value version]
     (swap! state assoc version value))
