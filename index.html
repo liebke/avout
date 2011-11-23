@@ -1,5 +1,5 @@
 <head>
-<title>Avout: Clojure Distributed State</title>
+<title>Avout: Distributed State in Clojure</title>
 
 <style type="text/css">
 
@@ -138,8 +138,8 @@ code { color: #555555; }
 
 <p><center><img width="700" src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time.png" /></center></p>
 
-<p><a name="avout-atoms-refs" /></p>
 
+<a name="avout-atoms-refs" />
 <h2>Avout Distributed Atoms and Refs</h2>
 
 <p><em>Avout</em> Atoms and Refs are <strong>ACI(D)</strong>, providing the same promises of <em>atomicity</em>, <em>consistency</em>, and <em>isolation</em> as Clojure's in-memory versions, and optionally providing <em>durability</em>, depending on the type of Avout Atom or Ref used.</p>
@@ -318,9 +318,7 @@ Alter both Refs within a dosync!! block.
 </pre>
 
 
-
-<p><a name="locks" /></p>
-
+<a name="locks" />
 <h2>Avout Distributed Locks</h2>
 
 <p>To get started, you'll need to <a href="#running-zookeeper">run ZooKeeper</a>.</p>
@@ -496,10 +494,14 @@ $ZOOKEEPER_HOME/bin/zkServer.sh start
 
 <h2>License</h2>
 
-<p>Avout is Copyright (c) 2011 David Liebke and Relevance, Inc</p>
+<p>Avout is Copyright &#169; 2011 David Liebke and Relevance, Inc</p>
 
 <p>Distributed under the Eclipse Public License, the same as Clojure.</p>
 
 </div>
 </div>
+
+<center><a href="#"><img src="images/avout-icon-dark.png" width="50" style="padding-top: 10px; padding-bottom: 5px" /></a></center>
+
+
 </body>
