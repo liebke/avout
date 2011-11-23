@@ -14,7 +14,7 @@
   .quote { background-color: #F8F8F8; color: #555555; font-style:italic; padding-left: 25px; padding-right: 25px; width: 500px; margin: 15px; }
 code { color: #555555; }
   .content { background-color: #ffffff; width: 750px; margin: 0px auto; }
-  .content-frame { padding-top: 20px; padding-bottom: 30px; background: #ffffff; width: 900px; margin: 0px auto; }
+  .content-frame { padding-top: 20px; padding-bottom: 5px; background: #ffffff; width: 900px; margin: 0px auto; }
   p { text-align: justify; }
   .box { background-color: #DDDDDD; color: #333333; padding-left:
   15px; padding-top: 15px; padding-bottom: 15px;  border: #CCCCCC 1px
@@ -85,7 +85,7 @@ code { color: #555555; }
 <p><center><img width="550" src="images/avout-logo.png" /></center></p>
 
 
-<p><a name="overview" /></p>
+<a name="overview" />
 <h2>Overview</h2>
 
 <p>Much has been written on functional programming and the advantages of designing programs that emphasize pure functions and immutable values, and that minimize or eliminate, wherever possible, mutable state. Of course, it's not always possible to completely eliminate the need for mutable state, and that's where Clojure's precise <a href="http://clojure.org/state">model of time, identity, and state</a> becomes powerful.</p>
@@ -185,7 +185,7 @@ code { color: #555555; }
 
 <p>In the plugins directory there is a Leiningen project called mongo-avout, which contains an implementation of a MongoDB-backed Atom, mongo-atom, and Ref, mongo-ref. Both support values consisting of any Clojure data structure supported in MongoDB with the <a href="https://github.com/aboekhoff/congomongo">Congomongo Library</a>.</p>
 
-<p><a name="extending-avout" /></p>
+<a name="extending-avout" />
 
 <h3>Extending Avout Atoms and Refs</h3>
 
@@ -232,8 +232,7 @@ code { color: #555555; }
 
 </pre>
 
-<p><a name="quick-start" /></p>
-
+<a name="quick-start" />
 <h2>Quick Start</h2>
 
 <p><em>Avout</em> Atoms and Refs implement Clojure's IRef interface, and therefore support functions that operate on IRefs, including: deref (and its reader-macro, @), set-validator!, add-watch, remove-watch. <em>Avout</em> provides "double-bang" versions of the remaining core Atom and Ref functions (<a href="http://clojuredocs.org/clojure_core/clojure.core/reset!">reset!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/swap!">swap!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/dosync">dosync</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/ref-set">ref-set</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/alter">alter</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/commute">commute</a>) for use with distributed Atoms and Refs: <strong>reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!</strong>.</p>
@@ -468,18 +467,18 @@ $ZOOKEEPER_HOME/bin/zkServer.sh start
 </pre>
 
 
-<p>
 <a name="contributing" />
-</p>
-
 <h2>Contributing</h2>
 
 <p>Although Avout is not part of Clojure-Contrib, it follows the same guidelines for contributing, which includes signing a <a href="http://clojure.org/contributing">Clojure Contributor Agreement</a> (CA) before contributions can be accepted.</p>
 
-<p>
-<a name="references" />
-</p>
 
+<h2>License</h2>
+
+<p>Avout is distributed under the Eclipse Public License, the same as Clojure.</p>
+
+
+<a name="references" />
 <h2>References</h2>
 
 <ul>
@@ -505,16 +504,27 @@ $ZOOKEEPER_HOME/bin/zkServer.sh start
 
 </ul>
 
-<h2>License</h2>
 
-<p>Avout is Copyright &#169; 2011 David Liebke and Relevance, Inc</p>
 
-<p>Distributed under the Eclipse Public License, the same as Clojure.</p>
+<p style="margin-top: 60px">
+<center>
+<a href="http://thinkrelevance.com"><img src="http://thinkrelevance.com/images/logo.png" width="100px" style="padding-right: 50px" /></a>
+<a href="http://clojure.com"><img src="http://clojure.com/stylesheets/images/logo.png" /></a>
+</center>
+</p>
+
+
+
+<p style="margin-top: 10px; padding-bottom: 5px">
+<center><em>Copyright &#169; 2011 David Edgar Liebke and Relevance, Inc</em></center>
+</p>
 
 </div>
 </div>
 
-<center><a href="#"><img src="images/avout-icon-dark.png" width="50" style="padding-top: 10px; padding-bottom: 5px" /></a></center>
+<center>
+<a href="#"><img src="images/avout-icon-dark.png" width="50" style="margin-top: 20px; padding-bottom: 5px" /></a>
+</center>
 
 
 </body>
