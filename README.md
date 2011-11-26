@@ -22,6 +22,10 @@ Although Avout is not part of Clojure-Contrib, it follows the same guidelines fo
 
 ## License
 
+Avout is distributed under the Eclipse Public License, the same as Clojure.
+
+## Copyright
+
 Avout is Copyright © 2011 David Liebke and Relevance, Inc
 
-Distributed under the Eclipse Public License, the same as Clojure.
+
