@@ -11,7 +11,7 @@
   .code-ref { background-color: #F8F8F8; color: #003399; font-style:italic; padding-left: 5px; padding-right: 5px; font-size: 0.9em; }
   .code-sig { background-color: #DDDDDD; color: #003399; font-family: "Courier New", Courier; padding-left: 5px; }
   .code-listing { background-color: #FFFFFF; color: #444444; border: #EEEEEE 1px solid;  padding-bottom: 1px; padding-left: 5px; border-bottom: #DDDDDD 1px solid; border-right: #DDDDDD 1px solid; font-size: 1em }
-  .quote { background-color: #F8F8F8; color: #555555; font-style:italic; padding-left: 25px; padding-right: 25px; width: 500px; margin: 15px; }
+  .quote { background-color: #F8F8F8; color: #555555; font-style:italic; padding-left: 25px; padding-right: 25px; width: 650px; margin-left: 15px; margin-right: 15px }
 code { color: #555555; }
   .content { background-color: #ffffff; width: 750px; margin: 0px auto; }
   .content-frame { padding-top: 20px; padding-bottom: 5px; background: #ffffff; width: 900px; margin: 0px auto; }
@@ -124,7 +124,7 @@ code { color: #555555; }
 
 <p>Perception is massively parallel and uncoordinated, meaning you don't have to coordinate with others to observe the value of an identity, no locks or synchronized blocks or message queues, just grab the most recent snapshot of the identity's value and go.</p>
 
-<p>Writes, on the other hand, must be coordinated. Since future values are derived by applying functions to an identity's most recent immutable value, writes must be atomic. Two processes that observe the same value for an identity cannot both write new values, one will win and the other will have to read the latest value and try its write again. Below is an illustration of how Clojure's, and Avout's, STM performs updates to a Ref's state with two contending writers.</p>
+<p>Writes, on the other hand, must be coordinated. Since future values are derived by applying functions to an identity's most recent immutable value, writes must be atomic. Two processes that observe the same value for an identity cannot both write new values, one will win and the other will have to read the new value and try its write again. Below is an illustration of how Clojure's, and Avout's, STM performs updates to a Ref's state with two contending writers.</p>
 
 <p><center><img width="700" src="https://github.com/liebke/avout/raw/master/docs/images/stm.png" /></center></p>
 
@@ -145,17 +145,30 @@ code { color: #555555; }
 
 </ol>
 
+<h3>Atoms & Refs</h3>
+
+<p>Atoms provide a way to manage shared, synchronous, independent state. Updates to the state of an Atom are usually acheived by using <em>swap!</em> to apply a function of the current value of the Atom, and using the result as the new value. The swap! function provides atomic updates.</p>
+
+<p>Refs support coordinated, synchronous change of multiple locations. The values of a Ref can only be mutated within a transaction.</p>
+
+<p>If you need synchronized updates coordinated across multiple locations, then use Refs. Otherwise, Atoms are more efficient.</p>
+
 <h3>Transactions</h3>
 
-<p><strong>TODO</strong></p>
+<div class="quote">
+"Transactions ensure that all actions on Refs are atomic, consistent, and isolated. Atomic means that every change to Refs made within a transaction occurs or none do. Consistent means that each new value can be checked with a validator function before allowing the transaction to commit. Isolated means that no transaction sees the effects of any other transaction while it is running. Another feature common to STMs is that, should a transaction have a conflict while running, it is automatically retried." &#8212; <a href="http://clojure.org/refs">clojure.org/refs</a>
+</div>
 
-<p><center><img width="700" src="https://github.com/liebke/avout/raw/master/docs/images/ref-over-time.png" /></center></p>
+<p><center><img width="700" src="images/refs-txn.png" /></center></p>
 
+<p>The above figure illustrates two transactions. In the first, only a single Ref, <em>x</em>, participates, the transaction begins at time <em>t1</em>, reads the value of <em>x</em> committed at time <em>t0</em>, applies a function to the value, and writes a new value at time <em>t2</em>. The transaction ensures that the update is atomic, i.e. that no other process can update the value of <em>x</em> in the time between when this transaction reads the current value and writes a new value. If another process beats it to the write, this transaction will be retried, applying its function to the new value and trying the write again. </p>
+
+<p>In the second transaction, two Refs participate, <em>y</em> and <em>z</em>, the transaction starts at time <em>t5</em>, the last committed values of <em>y</em>, from time <em>t3</em>, and <em>x</em>, from time <em>t4</em>, are read, new values are derived by applying functions to the old values, and are then written at time <em>t6</em>. If either <em>y</em> or <em>z</em> fail, then the entire transaction is retried until the maximum number of retries has been reached.</p>
 
 <a name="avout-atoms-refs" />
 <h2>Avout Distributed Atoms and Refs</h2>
 
-<p><em>Avout</em> Atoms and Refs are <strong>ACI(D)</strong>, providing the same promises of <em>atomicity</em>, <em>consistency</em>, and <em>isolation</em> as Clojure's in-memory versions, and optionally providing <em>durability</em>, depending on the type of Avout Atom or Ref used.</p>
+<p><em>Avout</em> provides a distributed version of Clojure's <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">MVCC</a>-based <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a>. <em>Avout</em> transactions provide the same promises of <em>atomicity</em>, <em>consistency</em>, and <em>isolation</em> as Clojure's in-memory versions, and optionally providing <em>durability</em>, depending on the type of Avout Atom or Ref used.</p>
 
 <p><em>Avout</em> Atoms and Refs use <a href="http://zookeeper.apache.org">Apache ZooKeeper</a> to coordinate state change, but not necessarily to hold state. Out of the box, Avout contains an Atom, <em>zk-atom</em>, that does also use ZooKeeper data fields to store its state, and two types of Refs, <em>zk-ref</em>, also backed by ZooKeeper data fields, and <em>local-ref</em>, that is in fact not distributed but provides a mechanism for local Refs to participate in transactions with distributed Refs.</p>
 
@@ -189,7 +202,7 @@ code { color: #555555; }
 
 <h3>Extending Avout Atoms and Refs</h3>
 
-<p>The above three types of Atoms and Refs provide examples for implementing other types that use different back-end state-stores and serialization methods. State-stores may, or may not, provide durability. For instance, zk-atom, zk-ref, mongo-atom, and mongo-ref provide durability promises in addition to atomicity, consistency, and isolation, but local-ref does not. Other durable (e.g. (No)SQL databases, RESTful services) or non-durable (e.g. <a href="http://www.terracotta.org/">Terracotta</a>, RESTful services) can be used as the basis of new types of Atoms and Refs.</p>
+<p>The above three types of Atoms and Refs provide examples for implementing other types that use different back-end state-stores and serialization methods. State-stores may, or may not, provide durability. For instance, zk-atom, zk-ref, mongo-atom, and mongo-ref provide durability promises in addition to atomicity, consistency, and isolation, but local-ref does not. Other durable (e.g. (No)SQL databases, RESTful services) or non-durable (e.g. <a href="http://hadoop.apache.org/hdfs/">Hadoop HDFS</a>, <a href="http://www.terracotta.org/">Terracotta</a>, RESTful services) can be used as the basis of new types of Atoms and Refs.</p>
 
 <p>New types of Atoms are created by implementing the <strong>avout.state.StateContainer</strong> protocol.</p>
 
@@ -430,6 +443,17 @@ Alter both Refs within a dosync!! block.
   (... didn't get lock do something else))
 
 </pre>
+
+<h3>ReadWriteLock</h3>
+
+<em>Avout</em> also provides a distributed implementation of <a href="http://download.oracle.com/javase/1,5,0/docs/api/java/util/concurrent/locks/ReadWriteLock.html">java.util.concurrent.ReadWriteLock</a> using the <em>distributed-read-write-lock</em> function.
+
+<pre class="brush: clojure">
+(def rwlock (distributed-read-write-lock client :lock-node "/rwlock"))
+
+</pre>
+
+ReadWriteLocks provide both a ReadLock and a WriteLock. WriteLocks are just instances of ZKDistributedReentrantLock, and therefore behave as described above. ReadLocks don't block other ReadLocks.
 
 
 <a name="running-zookeeper"></a>
