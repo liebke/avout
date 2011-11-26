@@ -124,22 +124,33 @@ code { color: #555555; }
 
 <h3>Atoms & Refs</h3>
 
-<p>Atoms provide a way to manage shared, synchronous, independent state. Updates to the state of an Atom are usually acheived by using <em>swap!</em> to apply a function of the current value of the Atom, and using the result as the new value. The <em>swap!</em> function provides atomic updates.</p>
+<p><a href="http://clojure.org/atoms">Atoms</a> provide a way to manage shared, independent state synchronously. Atoms are thread-safe and updates are atomic.</p>
 
-<p>Refs support coordinated, synchronous change of multiple locations. The values of a Ref can only be mutated within a transaction.</p>
+<p><a href="http://clojure.org/refs">Refs</a> also provide a way to manage shared state synchronously, but changes to multiple Refs can be coordinated within a single transaction.</p>
 
-<p>If you need synchronized updates coordinated across multiple locations, then use Refs. Otherwise, Atoms are more efficient.</p>
+<p>If you need synchronized updates coordinated across multiple identities, then use Refs. Otherwise, Atoms are more efficient.</p>
 
-<p>Perception is massively parallel and uncoordinated, meaning you don't have to coordinate with others to observe the value of an identity, no locks or synchronized blocks or message queues, just grab the most recent snapshot of the identity's value and go.</p>
+<h3>Reads vs. Writes</h3>
 
-<p>Writes, on the other hand, must be coordinated. Since future values are derived by applying functions to an identity's most recent immutable value, writes must be atomic. Two processes that observe the same value for an identity cannot both write new values, one will win and the other will have to read the new value and try its write again. 
+<p>Reading is just observation, and perception is massively parallel and uncoordinated, meaning you don't have to coordinate with others to observe the value of an identity, no locks or synchronized blocks or message queues, just grab the most recent snapshot of the identity's value and go.</p>
+
+<p>Writes, on the other hand, must be coordinated. Since future values are derived by applying functions to an identity's most recent immutable value, writes must be atomic. Two processes that observe the same value for an identity cannot both write new values, one will win and the other will have to read the new value, calculate the new value, and try its write again. 
 
 
 <h3>Transactions</h3>
 
+<p>Clojure uses a <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">Multi-Version Concurrency Control</a> (MVCC) <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a> to manage transactions.</p>
+
 <div class="quote">
 "Transactions ensure that all actions on Refs are atomic, consistent, and isolated. Atomic means that every change to Refs made within a transaction occurs or none do. Consistent means that each new value can be checked with a validator function before allowing the transaction to commit. Isolated means that no transaction sees the effects of any other transaction while it is running. Another feature common to STMs is that, should a transaction have a conflict while running, it is automatically retried." &#8212; <a href="http://clojure.org/refs">clojure.org/refs</a>
 </div>
+
+<p><center><img width="700" src="images/refs-txn.png" /></center></p>
+
+<p>The above figure illustrates two transactions. In the first, only a single Ref, <em>x</em>, participates, the transaction begins at time <em>t1</em>, reads the last committed value of <em>x</em> written at time <em>t0</em>, applies a function to the value, and writes a new value at time <em>t2</em>. The transaction ensures that the update is atomic, i.e. that no other process can update the value of <em>x</em> in the time between when this transaction reads the current value and writes a new value. If another process beats it to the write, this transaction will be retried, applying its function to the new value and trying the write again. </p>
+
+<p>In the second transaction, two Refs participate, <em>y</em> and <em>z</em>, the transaction starts at time <em>t5</em>, the last committed values of <em>y</em>, from time <em>t3</em>, and <em>x</em>, from time <em>t4</em>, are read, new values are derived by applying functions to the old values, and are then written at time <em>t6</em>. If the write of either <em>y</em> or <em>z</em> fails, then the entire transaction is retried until the maximum number of retries has been reached.</p>
+
 
 <p>Below is an illustration of how Clojure's, and Avout's, STM performs updates to a Ref's state with two contending writers.</p>
 
@@ -162,37 +173,30 @@ code { color: #555555; }
 
 </ol>
 
-
-<p><center><img width="700" src="images/refs-txn.png" /></center></p>
-
-<p>The above figure illustrates two transactions. In the first, only a single Ref, <em>x</em>, participates, the transaction begins at time <em>t1</em>, reads the value of <em>x</em> committed at time <em>t0</em>, applies a function to the value, and writes a new value at time <em>t2</em>. The transaction ensures that the update is atomic, i.e. that no other process can update the value of <em>x</em> in the time between when this transaction reads the current value and writes a new value. If another process beats it to the write, this transaction will be retried, applying its function to the new value and trying the write again. </p>
-
-<p>In the second transaction, two Refs participate, <em>y</em> and <em>z</em>, the transaction starts at time <em>t5</em>, the last committed values of <em>y</em>, from time <em>t3</em>, and <em>x</em>, from time <em>t4</em>, are read, new values are derived by applying functions to the old values, and are then written at time <em>t6</em>. If either <em>y</em> or <em>z</em> fail, then the entire transaction is retried until the maximum number of retries has been reached.</p>
-
 <p>Both figures illustrate that values are associated with points in time and are immutable.</p>
 
 <a name="avout-atoms-refs" />
 <h2>Avout Distributed Atoms and Refs</h2>
 
-<p><em>Avout</em> provides a distributed version of Clojure's <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">MVCC</a>-based <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a>. <em>Avout</em> transactions provide the same promises of <em>atomicity</em>, <em>consistency</em>, and <em>isolation</em> as Clojure's in-memory versions, and optionally providing <em>durability</em>, depending on the type of Avout Atom or Ref used.</p>
+<p><em>Avout</em> provides a distributed version of Clojure's <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">MVCC</a> <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a>. <em>Avout</em> transactions provide the same promises of <em>atomicity</em>, <em>consistency</em>, and <em>isolation</em> as Clojure's in-memory versions, and optionally providing <em>durability</em>, depending on the type of Avout Atom or Ref used.</p>
 
-<p><em>Avout</em> Atoms and Refs use <a href="http://zookeeper.apache.org">Apache ZooKeeper</a> to coordinate state change, but not necessarily to hold state. Out of the box, Avout contains an Atom, <em>zk-atom</em>, that does also use ZooKeeper data fields to store its state, and two types of Refs, <em>zk-ref</em>, also backed by ZooKeeper data fields, and <em>local-ref</em>, that is in fact not distributed but provides a mechanism for local Refs to participate in transactions with distributed Refs.</p>
+<p><em>Avout</em> Atoms and Refs use <a href="http://zookeeper.apache.org">Apache ZooKeeper</a> to help coordinate state change, but not necessarily to hold state. Out of the box, Avout contains an Atom, <em>zk-atom</em>, that does also use ZooKeeper data fields to store its state, and two types of Refs, <em>zk-ref</em>, also backed by ZooKeeper data fields, and <em>local-ref</em>, that is in fact not distributed but provides a mechanism for local Refs to participate in transactions with distributed Refs.</p>
 
-<p><strong>Extendable</strong></p>
+<h3>Extendable</h3>
 
 <p><em>Avout</em> lets you create new types of distributed Atoms and Refs using the <strong>avout.state.StateContainer</strong> and <strong>avout.state.VersionedStateContainer</strong> protocols, respectively; examples of which are the <strong>MongoDB</strong>-backed <em>mongo-atom</em> and <em>mongo-ref</em>, which can be found in the plugins directory.</p>
 
-<p><strong>Caching</strong></p>
+<h3>Caching</h3>
 
 <p><em>Avout</em> provides <strong>caching</strong>, so that multiple derefs of the same Atom/Ref will not need to hit either ZooKeeper nor the back-end state-store until the cache has been invalidated by a local or remote update to the Atom or Ref.</p>
 
-<p><strong>Implements IRef</strong></p>
+<h3>IRef</h3>
 
 <p><em>Avout</em> Atoms and Refs implement Clojure's IRef interface, and therefore support functions that operate on IRefs, including: deref (and its reader-macro, @), set-validator!, add-watch, remove-watch.</p>
 
 <p><em>Avout</em> provides "double-bang" versions of the remaining core Atom and Ref functions (<a href="http://clojuredocs.org/clojure_core/clojure.core/reset!">reset!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/swap!">swap!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/dosync">dosync</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/ref-set">ref-set</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/alter">alter</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/commute">commute</a>) for use with distributed Atoms and Refs: <strong>reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!</strong>.</p>
 
-<h3>zk-atom and zk-ref</h3>
+<h3>zk-atom & zk-ref</h3>
 
 <p>Both zk-atoms and zk-refs store their state in a ZooKeeper data field as a byte array; deserialization/serialization is performed using Clojure's Reader/Printer (read-str/pr-str). ZooKeeper limits the size of data stored in data fields to 1 megabyte. Because Clojure's printer/reader is used for serialization, only appropriate Clojure data structures can be used as values. However, the ability to implement other back-ends with different serializations schemes is a primary goal of Avout.</p>
 
@@ -200,7 +204,7 @@ code { color: #555555; }
 
 <p>The local-ref stores its state in an in-memory Clojure Atom. Because its state is not network accessible, it can only be access from a single JVM, just like in-memory Refs, but unlike in-memory Refs it can participate in transactions with distributed Refs. This provides two benefits, 1) it provides a mechanism for keeping a value that only needs to be available locally in sync with distributed state using dosync!!, 2) since no serialization/deserialization is performed, arbitrary values can be used, including Java objects.</p>
 
-<h3>mongo-atom and mongo-ref</h3>
+<h3>mongo-atom & mongo-ref</h3>
 
 <p>In the plugins directory there is a Leiningen project called mongo-avout, which contains an implementation of a MongoDB-backed Atom, mongo-atom, and Ref, mongo-ref. Both support values consisting of any Clojure data structure supported in MongoDB with the <a href="https://github.com/aboekhoff/congomongo">Congomongo Library</a>.</p>
 
