@@ -1,4 +1,4 @@
-<a href="http://avout.io"><img width="550" src="https://avout.io/images/avout-logo.png" /></a>
+<a href="http://avout.io"><img width="550" src="http://avout.io/images/avout-logo.png" /></a>
 
 
 <a name="about-avout" />
