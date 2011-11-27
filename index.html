@@ -11,7 +11,7 @@
   .code-ref { background-color: #F8F8F8; color: #003399; font-style:italic; padding-left: 5px; padding-right: 5px; font-size: 0.9em; }
   .code-sig { background-color: #DDDDDD; color: #003399; font-family: "Courier New", Courier; padding-left: 5px; }
   .code-listing { background-color: #FFFFFF; color: #444444; border: #EEEEEE 1px solid;  padding-bottom: 1px; padding-left: 5px; border-bottom: #DDDDDD 1px solid; border-right: #DDDDDD 1px solid; font-size: 1em }
-  .quote { background-color: #FFFFFF; color: #555555; font-style:italic; padding-left: 25px; padding-right: 25px; width: 650px; margin-left: 15px; margin-right: 15px }
+  .quote { background-color: #FFFFFF; color: #555555; font-style:italic; padding-left: 35px; padding-right: 35px; width: 650px; margin-left: 15px; margin-right: 15px }
 code { color: #555555; }
   .content { background-color: #ffffff; width: 750px; margin: 0px auto; }
   .content-frame { padding-top: 20px; padding-bottom: 5px; background: #ffffff; width: 900px; margin: 0px auto; }
@@ -146,9 +146,9 @@ code { color: #555555; }
 <div class="content" style="clear: right">
 
 
-<p><center><img width="550" src="images/avout-logo.png" style="margin-top: 20px; margin-bottom: 50px" /></center></p>
+<p><center><img width="550" src="images/avout-logo.png" style="margin-top: 20px; margin-bottom: 20px" /></center></p>
 
-<div class="quote" style="margin-bottom: 60px; font-size: 1.1em; text-align: justify"><em>Avout</em> extends Clojure's model of in-memory <a href="http://clojure.org/state">state</a> to distributed application development by providing a distributed implementation of Clojure's <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">Multiversion Concurrency Control</a> (MVCC) <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a> along with distributable and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a> concurrency primitives.</div>
+<div class="quote" style="margin-bottom: 60px; font-size: 1.1em; text-align: justify"><em>Avout</em> brings Clojure's model of in-memory <a href="http://clojure.org/state">state</a> to distributed application development by providing a distributed implementation of Clojure's <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">Multiversion Concurrency Control</a> (MVCC) <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a> along with distributable and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a> concurrency primitives.</div>
 
 
 <p class="download">
@@ -164,7 +164,7 @@ code { color: #555555; }
 
 <p>Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where Avout comes in.</p>
 
-<p>Below is some background on Avout's design, if your interests don't tend toward the philosophy of <a href="http://en.wikipedia.org/wiki/Alfred_North_Whitehead">Alfred North Whitehead</a>, you can jump directly to the <a href="#tutorial">tutorial</a>.</p>
+<p>Below is some background on Avout's design, if your interests don't tend toward the philosophy of <a href="http://en.wikipedia.org/wiki/Alfred_North_Whitehead">Alfred North Whitehead</a>, you can jump directly to the <a href="#tutorial">Getting Started</a> guide.</p>
 
 <a name="state-in-clojure" />
 <h3>Clojure's Philosophy of State</h3>
