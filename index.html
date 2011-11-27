@@ -31,6 +31,60 @@ code { color: #555555; }
   .menu { margin-bottom: 5px; margin-top: 5px; padding-left:0px; padding-right:0px; }
   .menu-item { margin-left: 0px; color: #ffffff; font-family: Helvetica, Gill, sans-serif; color: #000066; font-size: 0.9em; display: inline; }
   a.menu { color: #999999; text-decoration: none; }
+
+/* Download button */
+.download {
+  margin: 30px 0 50px;
+  text-align: center;
+}
+.download .btn {
+  font-size: 20px;
+  padding: 12px 24px;
+  -webkit-border-radius: 6px;
+     -moz-border-radius: 6px;
+          border-radius: 6px;
+}
+
+/* Change up the buttons to match GitHub */
+.primary.btn {
+  color: #fff;
+  text-decoration: none;
+  text-shadow: 0 -1px 0 rgba(0,0,0,.5);
+  background-color: #3072b3; /* Old browsers */
+  background-repeat: repeat-x; /* Repeat the gradient */
+  background-image: -moz-linear-gradient(top, #599bdc 0%, #3072b3 100%); /* FF3.6+ */
+  background-image: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#599bdc), color-stop(100%,#3072b3)); /* Chrome,Safari4+ */
+  background-image: -webkit-linear-gradient(top, #599bdc 0%,#3072b3 100%); /* Chrome 10+,Safari 5.1+ */
+  background-image: -ms-linear-gradient(top, #599bdc 0%,#3072b3 100%); /* IE10+ */
+  background-image: -o-linear-gradient(top, #599bdc 0%,#3072b3 100%); /* Opera 11.10+ */
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#599bdc', endColorstr='#3072b3',GradientType=0 ); /* IE6-9 */
+  background-image: linear-gradient(top, #599bdc 0%,#3072b3 100%); /* W3C */
+  border: 1px solid #2967a4;
+  -webkit-transition: none;
+     -moz-transition: none;
+          transition: none;
+  -webkit-box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 1px 2px rgba(0,0,0,.2);
+     -moz-box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 1px 2px rgba(0,0,0,.2);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 1px 2px rgba(0,0,0,.2);
+}
+.primary.btn:hover {
+  background-position: 0 -15px;
+}
+.primary.btn:active {
+  background-color: #3072b3; /* Old browsers */
+  background-repeat: repeat-x; /* Repeat the gradient */
+  background-image: -moz-linear-gradient(top, #285e93 0%, #3072b3 100%); /* FF3.6+ */
+  background-image: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#285e93), color-stop(100%,#3072b3)); /* Chrome,Safari4+ */
+  background-image: -webkit-linear-gradient(top, #285e93 0%,#3072b3 100%); /* Chrome 10+,Safari 5.1+ */
+  background-image: -ms-linear-gradient(top, #285e93 0%,#3072b3 100%); /* IE10+ */
+  background-image: -o-linear-gradient(top, #285e93 0%,#3072b3 100%); /* Opera 11.10+ */
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#285e93', endColorstr='#3072b3',GradientType=0 ); /* IE6-9 */
+  background-image: linear-gradient(top, #285e93 0%,#3072b3 100%); /* W3C */
+  -webkit-box-shadow: inset 0 10px 10px rgba(0,0,0,.15), 0 1px 2px rgba(0,0,0,.2);
+     -moz-box-shadow: inset 0 10px 10px rgba(0,0,0,.15), 0 1px 2px rgba(0,0,0,.2);
+          box-shadow: inset 0 10px 10px rgba(0,0,0,.15), 0 1px 2px rgba(0,0,0,.2);
+}
+
 </style>
 
 <script type="text/javascript">
@@ -56,11 +110,21 @@ code { color: #555555; }
 <li class="menu-item"><a class="menu" href="#tutorial">Tutorial</a></li>
 <li class="menu-item"><a class="menu" href="#avout-atoms-refs">Distributed Atoms & Refs</a></li>
 <li class="menu-item"><a class="menu" href="#locks">Distributed Locks</a></li>
-<li class="menu-item"><a class="menu" href="https://github.com/liebke/avout">Source Code</a></li>
+<li class="menu-item"><a class="menu" href="#contributing">Contributing</a></li>
 </ul>
 </div>
 
 <div class="content-frame">
+
+<!-- 
+<div style="float: right">
+<iframe src="http://markdotto.github.com/github-buttons/github-btn.html?user=liebke&repo=avout&type=watch&count=true"
+  allowtransparency="true" frameborder="0" scrolling="0" width="110px" height="20px"></iframe>
+<iframe src="http://markdotto.github.com/github-buttons/github-btn.html?user=liebke&repo=avout&type=fork&count=true"
+  allowtransparency="true" frameborder="0" scrolling="0" width="95px" height="20px"></iframe>
+</div>
+-->
+
 
 <link href="http://alexgorbatchev.com/pub/sh/current/styles/shCore.css" rel="stylesheet" type="text/css" />
 <link href="http://alexgorbatchev.com/pub/sh/current/styles/shThemeDefault.css" rel="stylesheet" type="text/css" />
@@ -79,11 +143,15 @@ code { color: #555555; }
 </script>
 
 
-<div class="content">
+<div class="content" style="clear: right">
 
 
-<p><center><img width="550" src="images/avout-logo.png" /></center></p>
+<p><center><img width="550" src="images/avout-logo.png" style="margin-top: 20px; margin-bottom: 50px" /></center></p>
 
+
+<p class="download">
+  <a href="http://github.com/liebke/avout" class="primary btn">Download on GitHub</a>
+</p>
 
 <a name="overview" />
 <h2>Overview</h2>
