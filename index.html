@@ -106,7 +106,7 @@ code { color: #555555; }
 
 <div align="center" style="padding-bottom: 0px">
 <ul class="menu">
-<li class="menu-item"><a class="menu" href="#overview">Background</a></li>
+<li class="menu-item"><a class="menu" href="#background">Background</a></li>
 <li class="menu-item"><a class="menu" href="#tutorial">Getting Started</a></li>
 <li class="menu-item"><a class="menu" href="#avout-atoms-refs">Distributed Atoms & Refs</a></li>
 <li class="menu-item"><a class="menu" href="#locks">Distributed Locks</a></li>
@@ -181,7 +181,7 @@ code { color: #555555; }
 <p><em><strong>Note:</strong> Avout Refs cannot participate in in-memory dosync transactions, but Avout's <strong>local-ref</strong> provides the equivalent of an in-memory Ref that can participate in dosync!! transactions with distributed Refs.</em></p>
 
 
-<a name="overview" />
+<a name="background" />
 <h2>Background</h2>
 
 <p>Avout enables techniques that require synchronous, coordinated management of distributed state (see also <a href="http://java.sun.com/developer/technicalArticles/tools/JavaSpaces/">JavaSpaces</a>), complementing approaches that focus on asynchronous, uncoordinated communication between distributed components, e.g. message queues (<a href="http://www.zeromq.org/">0MQ</a>, <a href="http://www.rabbitmq.com/">RabbitMQ</a>, <a href="http://www.jboss.org/hornetq">HornetQ</a>), event-driven approaches (<a href="http://www.jboss.org/netty">Netty</a>, <a href="https://github.com/ztellman/aleph">Aleph</a>), and actors (<a href="http://www.erlang.org/">Erlang</a>, <a href="http://akka.io">Akka</a>).
