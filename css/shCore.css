@@ -26,7 +26,6 @@
 .syntaxhighlighter textarea {
   -moz-border-radius: 0 0 0 0 !important;
   -webkit-border-radius: 0 0 0 0 !important;
-  background: none !important;
   border: 0 !important;
   bottom: auto !important;
   float: none !important;
@@ -47,17 +46,20 @@
   font-family: "Consolas", "Bitstream Vera Sans Mono", "Courier New", Courier, monospace !important;
   font-weight: normal !important;
   font-style: normal !important;
-  font-size: 1em !important;
+  font-size: 13px !important;
+  line-height: 18px !important;
   min-height: inherit !important;
   min-height: auto !important;
 }
 
 .syntaxhighlighter {
   width: 100% !important;
-  margin: 1em 0 1em 0 !important;
+  margin: 1em 0 2.5em 0 !important;
   position: relative !important;
   overflow: auto !important;
+  overflow-y: hidden !important;
   font-size: 1em !important;
+  background: #ebebeb !important;
 }
 .syntaxhighlighter.source {
   overflow: hidden !important;
@@ -92,7 +94,6 @@
   width: 100% !important;
   height: 100% !important;
   border: none !important;
-  background: white !important;
   padding-left: 1em !important;
   overflow: hidden !important;
   white-space: pre !important;
@@ -136,7 +137,7 @@
   right: 1px !important;
   top: 1px !important;
   width: 11px !important;
-  height: 11px !important;
+  height: 14px !important;
   font-size: 10px !important;
   z-index: 10 !important;
 }
