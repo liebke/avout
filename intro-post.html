@@ -1,6 +1,12 @@
 <h1>Introducing Avout: Distributed-State in Clojure</h1>
 
-<p>Today we are releasing <a href="http://avout.io">Avout</a>, which brings Clojure's in-memory model of <a href="http://clojure.org/state">state</a> to distributed application development by providing a distributed implementation of Clojure's <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">Multiversion Concurrency Control</a> (MVCC) <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a> along with distributable and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a> concurrency primitives.</p>
+<p>Today we are releasing <a href="http://avout.io">Avout</a>, which brings Clojure's in-memory model of <a href="http://clojure.org/state">state</a> to distributed application development by providing a distributed implementation of Clojure's <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">Multiversion Concurrency Control</a> (MVCC) <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a> along with distributable, durable, and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a> concurrency primitives.</p>
+
+<p>Avout enables techniques that require synchronous, coordinated management of distributed state (see also <a href="http://java.sun.com/developer/technicalArticles/tools/JavaSpaces/">JavaSpaces</a>), complementing approaches that focus on asynchronous, uncoordinated communication between distributed components, e.g. message queues (<a href="http://www.zeromq.org/">0MQ</a>, <a href="http://www.rabbitmq.com/">RabbitMQ</a>, <a href="http://www.jboss.org/hornetq">HornetQ</a>), event-driven approaches (<a href="http://www.jboss.org/netty">Netty</a>, <a href="https://github.com/ztellman/aleph">Aleph</a>), and actors (<a href="http://www.erlang.org/">Erlang</a>, <a href="http://akka.io">Akka</a>).</p>
+
+<p>Much has been written [<a href="#references">1</a>, <a href="#references">2</a>, <a href="#references">3</a>] on functional programming and the advantages of designing programs that emphasize pure functions and immutable values, and that minimize or eliminate, wherever possible, mutable state. Of course, it's not always possible to completely eliminate the need for mutable state, and that's where Clojure's precise <a href="http://clojure.org/state">model of time, identity, and state</a> becomes powerful.</p>
+
+<p>Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where Avout comes in.</p>
 
 <p>Avout grew from work on <a href="https://github.com/liebke/zookeeper-clj">zookeeper-clj</a>, a Clojure DSL for working with <a href="http://zookeeper.apache.org/">Apache ZooKeeper</a>. The functionality provided by ZooKeeper has proven important when building distributed applications at <a href="http://thinkrelevance.com">Relevance</a>, so zookeeper-clj was developed to ease future development with it. And with the DSL developed, it was natural to implement several common <a href="http://zookeeper.apache.org/doc/trunk/recipes.html">ZooKeeper recipes</a>, including leader-election and distributed locks, as a standalone Clojure library.</p>
 
@@ -10,17 +16,13 @@
 
 <p>Several weeks later, after digging into the design of Clojure's STM, consulting with Rich, gathering feedback from others at Relevance and at the <a href="http://clojure-conj.org/">Conj</a>, and performing a lot of testing and tuning, <a href="http://avout.io">Avout</a> was born.</p>
 
-<p>Avout enables techniques that require synchronous, coordinated management of distributed state (see also <a href="http://java.sun.com/developer/technicalArticles/tools/JavaSpaces/">JavaSpaces</a>), complementing approaches that focus on asynchronous, uncoordinated communication between distributed components, e.g. message queues (<a href="http://www.zeromq.org/">0MQ</a>, <a href="http://www.rabbitmq.com/">RabbitMQ</a>, <a href="http://www.jboss.org/hornetq">HornetQ</a>), event-driven approaches (<a href="http://www.jboss.org/netty">Netty</a>, <a href="https://github.com/ztellman/aleph">Aleph</a>), and actors (<a href="http://www.erlang.org/">Erlang</a>, <a href="http://akka.io">Akka</a>).</p>
 
-<p>Many have written [<a href="#references">1</a>, <a href="#references">2</a>, <a href="#references">3</a>] on functional programming and the advantages of designing programs that emphasize pure functions and immutable values, and that minimize or eliminate, wherever possible, mutable state. Of course, it's not always possible to completely eliminate the need for mutable state, and that's where Clojure's precise <a href="http://clojure.org/state">model of time, identity, and state</a> becomes powerful.</p>
-
-<p>Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where Avout comes in.</p>
 
 <h3>Extending Avout</h3>
 
-<p>Avout can be extended with new types of Atoms and Refs that use different containers for their state, including (No)SQL databases, (distributed) filesystems, and RESTful webservices. The types of values supported by each depends on both the backend store and the method of serialization used. Avout provides the same promises of atomicity, consistency, and isolation for custom Refs as it does for built-in ones, and depending on the type of backend used, Refs and Atoms can be durable.</p>
+<p>Avout can be extended with new types of Atoms and Refs that use different containers for their state, durable or not, including (No)SQL databases, (distributed) filesystems, in-memory data structures, and RESTful webservices. The types of values supported by each depends on both the backend store and the method of serialization used.</p>
 
-<p>New types of Atoms are created by implementing the <strong>avout.state.StateContainer</strong> protocol.</p>
+<p>New types of Atoms can be created by implementing the <strong>avout.state.StateContainer</strong> protocol,</p>
 
 <pre class="brush: clojure">
 (defprotocol StateContainer
@@ -31,7 +33,7 @@
 
 </pre>
 
-<p>To create new Ref types, implement <strong>avout.state.VersionedStateContainer</strong>.</p>
+<p>and new Ref types can be created by implementing <strong>avout.state.VersionedStateContainer</strong>.</p>
 
 <pre class="brush: clojure">
 (defprotocol VersionedStateContainer
@@ -43,7 +45,7 @@
 
 </pre>
 
-<p>By implementing the avout.state.VersionedStateContainer protocol, new types of Refs can be created that can participate in transactions with other Refs, even of different types.</p>
+<p>Transactions containing different types of Avout Refs are supported.</p>
 
 <h3>Using Avout</h3>
 
