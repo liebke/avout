@@ -16,6 +16,37 @@
 
 <p>Likewise, when designing distributed applications, it is desirable to create components that are loosely coupled and that communicate with each other asynchronously, but this too is also not always possible. There are times when you need coordinated access to state across systems in a distributed application, and this is where Avout comes in.</p>
 
+<h3>Extending Avout</h3>
+
+<p>Avout can be extended with new types of Atoms and Refs that use different containers for their state, including (No)SQL databases, (distributed) filesystems, and RESTful webservices. The types of values supported by each depends on both the backend store and the method of serialization used. Avout provides the same promises of atomicity, consistency, and isolation for custom Refs as it does for built-in ones, and depending on the type of backend used, Refs and Atoms can be durable.</p>
+
+<p>New types of Atoms are created by implementing the <strong>avout.state.StateContainer</strong> protocol.</p>
+
+<pre class="brush: clojure">
+(defprotocol StateContainer
+  (initStateContainer [this])
+  (destroyStateContainer [this])
+  (getState [this])
+  (setState [this value]))
+
+</pre>
+
+<p>To create new Ref types, implement <strong>avout.state.VersionedStateContainer</strong>.</p>
+
+<pre class="brush: clojure">
+(defprotocol VersionedStateContainer
+  (initVersionedStateContainer [this])
+  (destroyVersionedStateContainer [this])
+  (getStateAt [this version])
+  (setStateAt [this value version])
+  (deleteStateAt [this version]))
+
+</pre>
+
+<p>By implementing the avout.state.VersionedStateContainer protocol, new types of Refs can be created that can participate in transactions with other Refs, even of different types.</p>
+
+<h3>Using Avout</h3>
+
 <p>Below is the Avout equivalent of *Hello World*.</p>
 
 <pre><code>(use 'avout.core)
@@ -37,9 +68,9 @@
 
 <p><em>Note: Avout Refs cannot participate in in-memory dosync transactions, but Avout's **local-ref** provides the equivalent of an in-memory Ref that can participate in dosync!! transactions with distributed Refs.</em></p>
 
-<p>To learn more about Avout and distributed-state in Clojure, visit <a href="http://avout.io">avout.io</a></p>
 
 <h3>More on Avout</h3>
+<p>To learn more about Avout and distributed-state in Clojure, visit <a href="http://avout.io">avout.io</a></p>
 <ul>
 <li><a href="http://avout.io/#background">Background</a></li>
 <li><a href="http://avout.io/#tutorial">Getting Started</a></li>
