@@ -33,7 +33,7 @@ code { color: #555555; }
   strike, s { text-decoration: line-through; color: red; font-weight: bold; }
   .insert { font-weight: bold; font-style: italic; color:#33a933;}
 
-  ul.menu { margin: 0 auto; padding: 10px 0px; background-color: #222; display: block; position: fixed; width: 100%; text-align: center; }
+  ul.menu { margin: 0 auto; padding: 10px 0px; background-color: #222; display: block; position: fixed; width: 100%; text-align: center; z-index: 1000; -webkit-box-shadow: 0 1px 5px #333; }
   li.menu-item { margin-left: 0px; color: #ffffff; font-family: Helvetica, Gill, sans-serif; color: #000066; font-size: 0.9em; display: inline; }
   a.menu:link { border-bottom: none; color: #999; text-decoration: none; }
   a.menu:visited { border-bottom: none; color: #999; text-decoration: none; }
@@ -43,7 +43,9 @@ code { color: #555555; }
   a:visited { border-bottom: 1px solid #999; color: #3d5a96; text-decoration: none; }
   a:hover { color: #111; }
   a.logo {border-bottom: none;}
-
+  
+  #background, #getting-started, #distributed-atoms-and-refs, #distributed-locks, #contributing {margin-bottom: 80px; display: block;}
+  
 /* Download button */
 .download {
   margin: 30px 0 50px;
@@ -193,8 +195,8 @@ code { color: #555555; }
 <p><em><strong>Note:</strong> Avout Refs cannot participate in in-memory dosync transactions, but Avout's <strong>local-ref</strong> provides the equivalent of an in-memory Ref that can participate in dosync!! transactions with distributed Refs.</em></p>
 
 
-<a name="background" />
-<h2>Background</h2>
+<a name="background" id="background"></a>
+<h2 class="title">Background</h2>
 
 <p>Avout enables techniques that require synchronous, coordinated management of distributed state (see also <a href="http://java.sun.com/developer/technicalArticles/tools/JavaSpaces/">JavaSpaces</a>), complementing approaches that focus on asynchronous, uncoordinated communication between distributed components, e.g. message queues (<a href="http://www.zeromq.org/">0MQ</a>, <a href="http://www.rabbitmq.com/">RabbitMQ</a>, <a href="http://www.jboss.org/hornetq">HornetQ</a>), event-driven approaches (<a href="http://www.jboss.org/netty">Netty</a>, <a href="https://github.com/ztellman/aleph">Aleph</a>), and actors (<a href="http://www.erlang.org/">Erlang</a>, <a href="http://akka.io">Akka</a>).
 </p>
@@ -282,7 +284,7 @@ code { color: #555555; }
 
 <p>Both figures illustrate that values are associated with points in time and are immutable.</p>
 
-<a name="avout-atoms-refs" />
+<a name="avout-atoms-refs" id="distributed-atoms-and-refs"></a>
 <h2>Avout Distributed Atoms and Refs</h2>
 
 <p><em>Avout</em> provides a distributed version of Clojure's <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">MVCC</a> <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a>. <em>Avout</em> transactions provide the same promises of <em>atomicity</em>, <em>consistency</em>, and <em>isolation</em> as Clojure's in-memory versions, and optionally providing <em>durability</em>, depending on the type of Avout Atom or Ref used.</p>
@@ -365,7 +367,7 @@ code { color: #555555; }
 
 </pre>
 
-<a name="tutorial" />
+<a name="tutorial" id="getting-started"></a>
 <h2>Getting Started</h2>
 
 <p><em>Avout</em> Atoms and Refs implement Clojure's IRef interface, and therefore support functions that operate on IRefs, including: deref (and its reader-macro, @), set-validator!, add-watch, remove-watch. <em>Avout</em> provides "double-bang" versions of the remaining core Atom and Ref functions (<a href="http://clojuredocs.org/clojure_core/clojure.core/reset!">reset!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/swap!">swap!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/dosync">dosync</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/ref-set">ref-set</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/alter">alter</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/commute">commute</a>) for use with distributed Atoms and Refs: <strong>reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!</strong>.</p>
@@ -465,7 +467,7 @@ Alter both Refs within a dosync!! block.
 </pre>
 
 
-<a name="locks" />
+<a name="locks" id="distributed-locks"></a>
 <h2>Avout Distributed Locks</h2>
 
 <p>To get started, you'll need to <a href="#running-zookeeper">run ZooKeeper</a>.</p>
@@ -577,10 +579,7 @@ Alter both Refs within a dosync!! block.
 
 ReadWriteLocks provide both a ReadLock and a WriteLock. WriteLocks are just instances of ZKDistributedReentrantLock, and therefore behave as described above. ReadLocks don't block other ReadLocks.
 
-
-<a name="running-zookeeper"></a>
-
-<h2>Running ZooKeeper</h2>
+<h3>Running ZooKeeper</h3>
 
 <p>Download Apache ZooKeeper from <a href="http://zookeeper.apache.org/releases.html">http://zookeeper.apache.org/releases.html</a>.</p>
 
@@ -612,8 +611,7 @@ $ZOOKEEPER_HOME/bin/zkServer.sh start
 
 </pre>
 
-<a name="roadmap" />
-<h2>Roadmap</h2>
+<h3>Roadmap</h3>
 
 <ol>
 <li>Provide Avout Java API</li>
@@ -623,19 +621,19 @@ $ZOOKEEPER_HOME/bin/zkServer.sh start
 <li>Abstract out ZooKeeper functionality and implement a version of Avout without dependencies or one with other dependencies, e.g. <a href="http://www.jgroups.org/">JGroups</a></li>
 </ol>
 
-<a name="contributing" />
+<a name="contributing" id="contributing"></a>
 <h2>Contributing</h2>
 
 <p>Although Avout is not part of Clojure-Contrib, it follows the same guidelines for contributing, which includes signing a <a href="http://clojure.org/contributing">Clojure Contributor Agreement</a> (CA) before contributions can be accepted.</p>
 
 
-<h2>License</h2>
+<h3>License</h3>
 
 <p>Avout is distributed under the Eclipse Public License, the same as Clojure.</p>
 
 
 <a name="references" />
-<h2>References</h2>
+<h3>References</h3>
 
 <ol>
 <li><a href="https://github.com/liebke/avout">Avout on Github</a></li>
