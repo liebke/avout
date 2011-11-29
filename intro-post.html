@@ -44,7 +44,7 @@
 
 <h3>Extending Avout</h3>
 
-<p>Avout can be extended with new types of Atoms and Refs that use different containers for their state, durable or not, including (No)SQL databases, (distributed) filesystems, in-memory data structures, and RESTful webservices. The types of values supported by each depends on both the backend store and the method of serialization used.</p>
+<p>Two types of Atoms, zk-atom and mongo-atom, and three types of Refs, zk-ref, mongo-ref, and local-ref have been implemented, and Avout can be extended with additional types of Atoms and Refs that use different containers for their state, durable or not, including (No)SQL databases, (distributed) filesystems, in-memory data structures, and RESTful webservices. The types of values supported by each depends on both the backend store and the method of serialization used, and transactions containing different types of Avout Refs are supported.</p>
 
 <p>New types of Atoms can be created by implementing the <strong>avout.state.StateContainer</strong> protocol,</p>
 
@@ -68,9 +68,6 @@
   (deleteStateAt [this version]))
 
 </pre>
-
-<p>Transactions containing different types of Avout Refs are supported.</p>
-
 
 <h3>More on Avout</h3>
 <p>To learn more about Avout and distributed-state in Clojure, visit <a href="http://avout.io">avout.io</a></p>

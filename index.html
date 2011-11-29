@@ -377,7 +377,7 @@ code { color: #555555; }
 <p>Avout is available on Github, <a href="https://github.com/liebke/avout">https://github.com/liebke/avout</a>. To get started, you'll need to <a href="#running-zookeeper">run ZooKeeper</a>, and include Avout as a dependency by adding the following to your project.clj file:</p>
 
 <pre class="brush: clojure">
-[avout "0.5.0-SNAPSHOT"]
+[avout "0.5.0"]
 
 </pre>
 
@@ -451,6 +451,13 @@ Alter both Refs within a dosync!! block.
 </pre>
 
 <p>Move a member from one group to another, across two different ref types (zk and mongo), transactionally so that the member always exist in one group or the other, but never neither group nor both groups.</p>
+
+<p>This example will use <em>mongo-ref</em> and so you will need to include <em>avout-mongo</em> as a dependency by adding the following to your project.clj file:</p>
+
+<pre class="brush: clojure">
+[avout-mongo "0.5.0"]
+
+</pre>
 
 <p>Define the two groups as refs (one zk-backed, the other mongodb-backed) that contain a map with one fields :members, which is a set of names (Note: mongo-ref and mongo-atom are part of a seperate project called mongo-avout, which lives in the plugins directory, you will need to install it in order to run the following example).</p>
 
