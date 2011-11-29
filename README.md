@@ -16,6 +16,12 @@
 
 <h3>Using Avout</h3>
 
+<p>Avout is available on Github, <a href="https://github.com/liebke/avout">https://github.com/liebke/avout</a>. To get started, you'll need to <a href="http://avout.io/index.html#running-zookeeper">run ZooKeeper</a>, and include Avout as a dependency by adding the following to your project.clj file:</p>
+
+```clojure
+[avout "0.5.0"]
+```
+
 <p>Below is the Avout equivalent of *Hello World*.</p>
 
 ```clojure
