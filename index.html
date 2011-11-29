@@ -1,20 +1,21 @@
 <head>
 <title>Avout: Distributed State in Clojure</title>
+<link href="http://alexgorbatchev.com/pub/sh/current/styles/shThemeDefault.css" rel="stylesheet" type="text/css" />
 
 <style type="text/css">
 
-  body {font-family: Garamond, Bodoni, "Times New Roman"; background-color: #333333; padding-top: 0px; font-size: 1.2em; color: #333333; }
+  body {font-family: Garamond, Bodoni, "Times New Roman"; background-color: #333333; padding:0; margin:0; font-size: 1.2em; color: #333333; line-height: 125%; }
   h1 { font-family: Garamond, Georgia, serif; color: #666666; }
-  h2 { font-family: Helvetica, Gill, sans-serif; color: #666666; }
-  h3, h4 { color: #444444; }
+  h2 { font-family: Helvetica, Gill, sans-serif; color: #666666; margin-top: 30px; }
+  h3, h4 { font-family: Helvetica, Gill, sans-serif; color: #666666; text-transform: uppercase; font-size: 90%; margin-top: 30px; }
   li {padding-left: 25px; padding-right: 25px; padding-top: 5px; }
   .code-ref { background-color: #F8F8F8; color: #003399; font-style:italic; padding-left: 5px; padding-right: 5px; font-size: 0.9em; }
   .code-sig { background-color: #DDDDDD; color: #003399; font-family: "Courier New", Courier; padding-left: 5px; }
   .code-listing { background-color: #FFFFFF; color: #444444; border: #EEEEEE 1px solid;  padding-bottom: 1px; padding-left: 5px; border-bottom: #DDDDDD 1px solid; border-right: #DDDDDD 1px solid; font-size: 1em }
-  .quote { background-color: #FFFFFF; color: #555555; font-style:italic; padding-left: 35px; padding-right: 35px; width: 650px; margin-left: 15px; margin-right: 15px }
+  .quote { background-color: #FFFFFF; color: #555555; font-style:italic; }
 code { color: #555555; }
-  .content { background-color: #ffffff; width: 750px; margin: 0px auto; }
-  .content-frame { padding-top: 20px; padding-bottom: 5px; background: #ffffff; width: 900px; margin: 0px auto; }
+  .content { background-color: #ffffff; width: 650px; margin: 0px auto; }
+  .content-frame { padding-top: 60px; padding-bottom: 5px; background: #ffffff; width: 800px; margin: 0px auto; }
   p { text-align: justify; }
   .box { background-color: #DDDDDD; color: #333333; padding-left:
   15px; padding-top: 15px; padding-bottom: 15px;  border: #CCCCCC 1px
@@ -25,12 +26,23 @@ code { color: #555555; }
   .footnote { font-style: italic; color:#777777; font-size: 0.9em; padding-left: 5px;
   padding-right: 25px; padding-bottom: 10px; }
 
+  pre { margin-bottom: 30px; margin-top: 30px; max-width: 100%; overflow: auto; }
+  code { margin-bottom: 30px; margin-top: 30px; max-width: 100%; overflow: auto; }
+  img { max-width: 100%; }
+
   strike, s { text-decoration: line-through; color: red; font-weight: bold; }
   .insert { font-weight: bold; font-style: italic; color:#33a933;}
 
-  .menu { margin-bottom: 5px; margin-top: 5px; padding-left:0px; padding-right:0px; }
-  .menu-item { margin-left: 0px; color: #ffffff; font-family: Helvetica, Gill, sans-serif; color: #000066; font-size: 0.9em; display: inline; }
-  a.menu { color: #999999; text-decoration: none; }
+  ul.menu { margin: 0 auto; padding: 10px 0px; background-color: #222; display: block; position: fixed; width: 100%; text-align: center; }
+  li.menu-item { margin-left: 0px; color: #ffffff; font-family: Helvetica, Gill, sans-serif; color: #000066; font-size: 0.9em; display: inline; }
+  a.menu:link { border-bottom: none; color: #999; text-decoration: none; }
+  a.menu:visited { border-bottom: none; color: #999; text-decoration: none; }
+  a.menu:hover { color: #69a4df; }
+  
+  a:link { border-bottom: 1px solid #999; color: #3d5a96; text-decoration: none; }
+  a:visited { border-bottom: 1px solid #999; color: #3d5a96; text-decoration: none; }
+  a:hover { color: #111; }
+  a.logo {border-bottom: none;}
 
 /* Download button */
 .download {
@@ -104,11 +116,11 @@ code { color: #555555; }
 
 <body>
 
-<div align="center" style="padding-bottom: 0px">
+<div>
 <ul class="menu">
 <li class="menu-item"><a class="menu" href="#background">Background</a></li>
 <li class="menu-item"><a class="menu" href="#tutorial">Getting Started</a></li>
-<li class="menu-item"><a class="menu" href="#avout-atoms-refs">Distributed Atoms & Refs</a></li>
+<li class="menu-item"><a class="menu" href="#avout-atoms-refs">Distributed Atoms &amp; Refs</a></li>
 <li class="menu-item"><a class="menu" href="#locks">Distributed Locks</a></li>
 <li class="menu-item"><a class="menu" href="#contributing">Contributing</a></li>
 </ul>
@@ -658,8 +670,8 @@ $ZOOKEEPER_HOME/bin/zkServer.sh start
 
 <p style="margin-top: 60px">
 <center>
-<a href="http://thinkrelevance.com"><img src="http://thinkrelevance.com/images/logo.png" width="100px" style="padding-right: 50px" /></a>
-<a href="http://clojure.com"><img src="http://clojure.com/stylesheets/images/logo.png" /></a>
+<a class="logo" href="http://thinkrelevance.com"><img src="http://thinkrelevance.com/images/logo.png" width="100px" style="padding-right: 50px" /></a>
+<a class="logo" href="http://clojure.com"><img src="http://clojure.com/stylesheets/images/logo.png" /></a>
 </center>
 </p>
 
@@ -673,7 +685,7 @@ $ZOOKEEPER_HOME/bin/zkServer.sh start
 </div>
 
 <center>
-<a href="#"><img src="images/avout-icon-dark.png" width="50" style="margin-top: 20px; padding-bottom: 5px" /></a>
+<a class="logo" href="#"><img src="images/avout-icon-dark.png" width="50" style="margin-top: 20px; padding-bottom: 5px" /></a>
 </center>
 
 
