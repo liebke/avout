@@ -2,7 +2,7 @@
 
 <p>Today we are releasing <a href="http://avout.io">Avout</a>, which brings Clojure's in-memory model of <a href="http://clojure.org/state">state</a> to distributed application development by providing a distributed implementation of Clojure's <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">Multiversion Concurrency Control</a> (MVCC) <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a> along with distributable, durable, and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a> concurrency primitives.</p>
 
-<p>Avout enables techniques that require synchronous, coordinated management of distributed state (see also <a href="http://java.sun.com/developer/technicalArticles/tools/JavaSpaces/">JavaSpaces</a>), complementing approaches that focus on asynchronous, uncoordinated communication between distributed components, e.g. message queues (<a href="http://www.zeromq.org/">0MQ</a>, <a href="http://www.rabbitmq.com/">RabbitMQ</a>, <a href="http://www.jboss.org/hornetq">HornetQ</a>), event-driven approaches (<a href="http://www.jboss.org/netty">Netty</a>, <a href="https://github.com/ztellman/aleph">Aleph</a>), and actors (<a href="http://www.erlang.org/">Erlang</a>, <a href="http://akka.io">Akka</a>).</p>
+<p>Avout enables techniques that require synchronous, coordinated (i.e. transactional) management of distributed state (see also <a href="http://java.sun.com/developer/technicalArticles/tools/JavaSpaces/">JavaSpaces</a>), complementing approaches that focus on asynchronous, uncoordinated communication between distributed components, e.g. message queues (<a href="http://www.zeromq.org/">0MQ</a>, <a href="http://www.rabbitmq.com/">RabbitMQ</a>, <a href="http://www.jboss.org/hornetq">HornetQ</a>), event-driven approaches (<a href="http://www.jboss.org/netty">Netty</a>, <a href="https://github.com/ztellman/aleph">Aleph</a>), and actors (<a href="http://www.erlang.org/">Erlang</a>, <a href="http://akka.io">Akka</a>).</p>
 
 <p>Much has been written [<a href="#references">1</a>, <a href="#references">2</a>, <a href="#references">3</a>] on functional programming and the advantages of designing programs that emphasize pure functions and immutable values, and that minimize or eliminate, wherever possible, mutable state. Of course, it's not always possible to completely eliminate the need for mutable state, and that's where Clojure's precise <a href="http://clojure.org/state">model of time, identity, and state</a> becomes powerful.</p>
 
@@ -17,6 +17,30 @@
 <p>Several weeks later, after digging into the design of Clojure's STM, consulting with Rich, gathering feedback from others at Relevance and at the <a href="http://clojure-conj.org/">Conj</a>, and performing a lot of testing and tuning, <a href="http://avout.io">Avout</a> was born.</p>
 
 
+
+
+<h3>Using Avout</h3>
+
+<p>Below is the Avout equivalent of *Hello World*.</p>
+
+<pre><code>(use 'avout.core)
+(def client (connect "127.0.0.1"))
+
+(def r0 (zk-ref client "/r0" 0))
+(def r1 (zk-ref client "/r1" []))
+
+(dosync!! client
+  (alter!! r0 inc)
+  (alter!! r1 conj @r0))
+</code></pre>
+
+<p>Start by creating a ZooKeeper client with the <strong>connect</strong> function, then create two ZooKeeper-backed distributed Refs using the <strong>zk-ref</strong> function. Finally, perform a <strong>dosync!!</strong> transaction that updates both Refs with <strong>alter!!</strong>. Using Avout isn't much different than using Clojure's in-memory Atoms and Refs.</p>
+
+<p><em>Avout</em> Atoms and Refs implement Clojure's IRef interface, and therefore support functions that operate on IRefs, including: deref (and its reader-macro, @), set-validator!, add-watch, and remove-watch.</p>
+
+<p><em>Avout</em> also provides <strong>"double-bang"</strong> versions of the remaining core Atom and Ref functions (<a href="http://clojuredocs.org/clojure_core/clojure.core/reset!">reset!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/swap!">swap!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/dosync">dosync</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/ref-set">ref-set</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/alter">alter</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/commute">commute</a>) for use with distributed Atoms and Refs, <strong>reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!</strong>.</p>
+
+<p><em>Note: Avout Refs cannot participate in in-memory dosync transactions, but Avout's **local-ref** provides the equivalent of an in-memory Ref that can participate in dosync!! transactions with distributed Refs.</em></p>
 
 <h3>Extending Avout</h3>
 
@@ -46,29 +70,6 @@
 </pre>
 
 <p>Transactions containing different types of Avout Refs are supported.</p>
-
-<h3>Using Avout</h3>
-
-<p>Below is the Avout equivalent of *Hello World*.</p>
-
-<pre><code>(use 'avout.core)
-(def client (connect "127.0.0.1"))
-
-(def r0 (zk-ref client "/r0" 0))
-(def r1 (zk-ref client "/r1" []))
-
-(dosync!! client
-  (alter!! r0 inc)
-  (alter!! r1 conj @r0))
-</code></pre>
-
-<p>Start by creating a ZooKeeper client with the <strong>connect</strong> function, then create two ZooKeeper-backed distributed Refs using the <strong>zk-ref</strong> function. Finally, perform a <strong>dosync!!</strong> transaction that updates both Refs with <strong>alter!!</strong>. Using Avout isn't much different than using Clojure's in-memory Atoms and Refs.</p>
-
-<p><em>Avout</em> Atoms and Refs implement Clojure's IRef interface, and therefore support functions that operate on IRefs, including: deref (and its reader-macro, @), set-validator!, add-watch, and remove-watch.</p>
-
-<p><em>Avout</em> also provides <strong>"double-bang"</strong> versions of the remaining core Atom and Ref functions (<a href="http://clojuredocs.org/clojure_core/clojure.core/reset!">reset!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/swap!">swap!</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/dosync">dosync</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/ref-set">ref-set</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/alter">alter</a>, <a href="http://clojuredocs.org/clojure_core/clojure.core/commute">commute</a>) for use with distributed Atoms and Refs, <strong>reset!!, swap!!, dosync!!, ref-set!!, alter!!, commute!!</strong>.</p>
-
-<p><em>Note: Avout Refs cannot participate in in-memory dosync transactions, but Avout's **local-ref** provides the equivalent of an in-memory Ref that can participate in dosync!! transactions with distributed Refs.</em></p>
 
 
 <h3>More on Avout</h3>
