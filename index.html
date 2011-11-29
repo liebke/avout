@@ -263,7 +263,7 @@ code { color: #555555; }
 
 <p>Below is an illustration of how Clojure's, and Avout's, STM performs updates to a Ref's state with two contending writers.</p>
 
-<p><center><img width="700" src="https://github.com/liebke/avout/raw/master/docs/images/stm.png" /></center></p>
+<p><center><img width="700" src="images/stm.png" /></center></p>
 
 <ol>
 <li><em>Thread-1</em> creates a Ref, <strong>r</strong>, at time <strong>t0</strong> with a value of 0</li>
@@ -324,7 +324,7 @@ code { color: #555555; }
 
 <h3>Extending Avout Atoms and Refs</h3>
 
-<p>The above three types of Atoms and Refs provide examples for implementing other types that use different back-end state-stores and serialization methods. State-stores may, or may not, provide durability. For instance, zk-atom, zk-ref, mongo-atom, and mongo-ref provide durability promises in addition to atomicity, consistency, and isolation, but local-ref does not. Other durable (e.g. (No)SQL databases, <a href="http://hadoop.apache.org/hdfs/">Hadoop HFS</a>, RESTful services) or non-durable (e.g. <a href="http://www.terracotta.org/">Terracotta</a>, RESTful services) can be used as the basis of new types of Atoms and Refs.</p>
+<p>The above three types of Atoms and Refs provide examples for implementing other types that use different back-end state-stores and serialization methods. State-stores may, or may not, provide durability. For instance, zk-atom, zk-ref, mongo-atom, and mongo-ref provide durability promises in addition to atomicity, consistency, and isolation, but local-ref does not. Other durable (e.g. (No)SQL databases, <a href="http://www.terracotta.org/">Terracotta</a>, <a href="http://hadoop.apache.org/hdfs/">Hadoop HFS</a>, RESTful services) or non-durable (e.g. in-memory data structures, RESTful services) can be used as the basis of new types of Atoms and Refs.</p>
 
 <p>New types of Atoms are created by implementing the <strong>avout.state.StateContainer</strong> protocol.</p>
 
