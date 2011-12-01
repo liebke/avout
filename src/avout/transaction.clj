@@ -32,17 +32,6 @@
 
 (defn retryex? [e] (= "RETRY" (.getMessage e)))
 
-(defn init-stm
-  ([client]
-     (zk/create-all client (str cfg/*stm-node* cfg/HISTORY) :persistent? true)
-     (zk/create client (str cfg/*stm-node* cfg/REFS) :persistent? true)
-     (zk/create client (str cfg/*stm-node* cfg/ATOMS) :persistent? true)))
-
-(defn reset-stm
-  ([client]
-     (zk/delete-all client cfg/*stm-node*)
-     (init-stm client)))
-
 (defn init-ref
   ([client ref-node]
      (zk/create-all client (str ref-node cfg/HISTORY) :persistent? true)

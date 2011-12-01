@@ -9,11 +9,26 @@
             avout.refs.local
             avout.atoms.zk))
 
-(def init-stm tx/init-stm)
+(defn init-stm
+  "Called the first time the STM is used, creates necessary ZooKeeper nodes."
+  ([client]
+     (zk/create-all client (str cfg/*stm-node* cfg/HISTORY) :persistent? true)
+     (zk/create client (str cfg/*stm-node* cfg/REFS) :persistent? true)
+     (zk/create client (str cfg/*stm-node* cfg/ATOMS) :persistent? true)))
 
-(def connect zk/connect)
+(defn reset-stm
+  "Used to clear and re-initialize the STM."
+  ([client]
+     (zk/delete-all client cfg/*stm-node*)
+     (init-stm client)))
 
-(def reset-stm tx/reset-stm)
+(defn connect
+  "Returns a ZooKeeper client, and initializes the STM if it doesn't already exist."
+  ([& args]
+     (let [client (apply zk/connect args)]
+       (when-not (zk/exists client cfg/*stm-node*)
+         (init-stm client))
+       client)))
 
 ;; Distributed versions of Clojure's standard Ref functions
 
