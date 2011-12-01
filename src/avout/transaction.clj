@@ -236,7 +236,9 @@
 (defn stop [txn]
   (when-not (current-state? (.client txn) (deref (.txid txn)) COMMITTED)
     (try
-      (update-txn-state txn RETRY)
+      (if (deref (.txid txn))
+        (update-txn-state txn RETRY)
+        (reincarnate-txn txn))
       (catch KeeperException$NoNodeException e
         (reincarnate-txn txn)))
     (reset! (.values txn) {})
