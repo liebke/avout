@@ -19,7 +19,7 @@
 <p>To get started, you'll need to <a href="http://avout.io/index.html#running-zookeeper">run ZooKeeper</a>, and include Avout as a dependency by adding the following to your project.clj file:</p>
 
 ```clojure
-[avout "0.5.0"]
+[avout "0.5.1"]
 ```
 
 <p>Below is the Avout equivalent of *Hello World*.</p>
