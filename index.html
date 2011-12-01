@@ -177,9 +177,6 @@ code { color: #555555; }
 (use 'avout.core)
 (def client (connect "127.0.0.1"))
 
-;; initialize STM the first time it is used
-(init-stm client)
-
 (def r0 (zk-ref client "/r0" 0))
 (def r1 (zk-ref client "/r1" []))
 
