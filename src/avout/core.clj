@@ -57,6 +57,10 @@
 ;; ZK and local Reference implementations
 
 (defn zk-ref
+  "Returns an instance of an Avout distributed Ref that uses a ZooKeeper data field
+   to hold its state and Clojure's printer/reader (pr-str/read-string) for
+   serialization. Note: ZooKeeper has a 1 megabyte limit on the size of data in its
+   data fields."
   ([client name init-value & {:keys [validator]}]
      (let [r (doto (refs/distributed-ref client name
                                          (avout.refs.zk.ZKVersionedStateContainer.
@@ -73,6 +77,9 @@
                              (str cfg/*stm-node* cfg/REFS name)))))
 
 (defn local-ref
+  "Returns an instance of an Avout Ref that holds its state locally, but can
+   be used in dosync!! transactions with distributed Refs since Avout Refs
+   cannot participate in dosync transactions with Clojure's in-memory Refs."
   ([client name init-value & {:keys [validator]}]
      (let [r (doto (refs/distributed-ref client name
                                          (avout.refs.local.LocalVersionedStateContainer.
@@ -110,6 +117,10 @@
 ;; ZK-based atom implementation
 
 (defn zk-atom
+  "Returns an instance of an Avout distributed Atom that uses a ZooKeeper data field
+   to hold its state and Clojure's printer/reader (pr-str/read-string) for
+   serialization. Note: ZooKeeper has a 1 megabyte limit on the size of data in its
+   data fields."
   ([client name init-value & {:keys [validator]}]
      (doto (atoms/distributed-atom client name (avout.atoms.zk.ZKStateContainer. client (str name "/data")))
        (set-validator! validator)
@@ -117,260 +128,3 @@
   ([client name] ;; for connecting to an existing atom only
      (atoms/distributed-atom client name (avout.atoms.zk.ZKStateContainer. client (zk/create-all client (str name "/data"))))))
 
-
-
-
-
-(comment
-
-  (use 'avout.core :reload-all)
-  (require '[avout.transaction :as tx])
-
-  (def client (connect "127.0.0.1"))
-  (reset-stm client)
-
-  (defn timer [f]
-    (let [start (System/nanoTime)]
-      (f)
-      (/ (double (- (System/nanoTime) start)) 1000000.0)))
-
-  (defn thread-test [client n]
-    (let [times (for [i (range n)] (promise))
-          c (zk-ref client "/c" 0)
-          d (zk-ref client "/d" [])]
-      (dotimes [i n]
-        (print ".")
-        (future
-          (try
-            (deliver (nth times i) (timer #(dosync!! client (alter!! d conj (alter!! c inc)))))
-            (catch Throwable e (.printStackTrace e)))))
-      (println "submitted")
-      [times c d]))
-
-  (defn analyze-results [[time-proms c d] n]
-    (let [times (doall (sort (map deref time-proms)))
-          total-time (last times)
-          time-intervals (map (fn [t0 t1] (- t1 t0)) (conj times 0) times)
-          time-interval-per-thread (map / time-intervals (range n 0 -1))
-          avg-time-interval (/ (apply + time-intervals) n)
-          avg-time-interval-per-thread (/ (apply + time-interval-per-thread) n)]
-      {:times times
-       :total-time total-time
-       :time-intervals time-intervals
-       :time-interval-per-thread time-interval-per-thread
-       :c @c
-       :d @d
-       :pass? (= @c (count @d))
-       :avg-time-interval avg-time-interval
-       :avg-time-interval-per-thread avg-time-interval-per-thread}))
-
-  (defn analyze-thread-test [client n]
-    (let [res (analyze-results (thread-test client n) n)]
-      (assoc (if (and (= (:c res) n) (:pass? res))
-               res
-               (assoc res :pass? false))
-        :n n)))
-
-  (defn single-thread-test [client n]
-    (let [c (zk-ref client "/c" 0)
-          d (zk-ref client "/d" [])]
-      (doall
-       (repeatedly n
-                   (fn [] (try
-                            (time (dosync!! client (alter!! d conj (alter!! c inc))))
-                            (catch Throwable e (.printStackTrace e))))))
-      [c d]))
-
-  (def refs (thread-test 25))
-  (map deref refs)
-
-  (def refs (single-thread-test 25))
-  (map deref refs)
-
-
-  )
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; zk-atom examples
-(comment
-
-  (use 'avout.core :reload-all)
-  (require '[zookeeper :as zk])
-
-  (def client (zk/connect "127.0.0.1"))
-  (def a0 (zk-atom client "/a1" 0))
-  @a0
-  (swap!! a0 inc)
-  @a0
-
-  (def a1 (zk-atom client "/a1" {}))
-  @a1
-  (swap!! a1 assoc :a 1)
-  (swap!! a1 update-in [:a] inc)
-
-  ;; check that reads are not blocked by writes
-  (future (swap!! a1 (fn [v] (Thread/sleep 5000) (update-in v [:a] inc))))
-  @a1
-
-  ;; test watches
-  (add-watch a1 :a1 (fn [akey aref old-val new-val] (println akey aref old-val new-val)))
-  (swap!! a1 update-in [:a] inc)
-  (swap!! a1 update-in [:a] inc)
-  (remove-watch a1 :a1)
-  (swap!! a1 update-in [:a] inc)
-
-  )
-
-(comment
-
-  (use 'avout.core :reload-all)
-  (require '[zookeeper :as zk])
-
-  (def client (zk/connect "127.0.0.1"))
-  (def a (zk-ref client "/a" 0))
-  (def b (zk-ref client "/b" 0))
-  @a
-  @b
-  (dosync!! client
-    (alter!! a inc)
-    (alter!! b #(+ @a %)))
-
-
-  ;; from another repl
-  (use 'avout.refs :reload-all)
-  (use 'avout.refs.zk :reload-all)
-  (require '[zookeeper :as zk])
-
-  ;; connect to the stm
-  (def stm (zk/connect "127.0.0.1"))
-
-  ;; no initial value, connect to an existing distributed ref
-  (def a (zk-ref stm "/a"))
-  (def b (zk-ref stm "/b"))
-
-  (dosync!! stm
-    (alter!! a inc)
-    (alter!! b #(+ @a %)))
-
-
-  ;; concurrency test
-  (use 'avout.core :reload-all)
-  (require '[zookeeper :as zk])
-
-  ;; connect to the stm
-  (def client (zk/connect "127.0.0.1"))
-
-  (def a (zk-ref client "/a" 0))
-  (def b (zk-ref client "/b" 0))
-  (doall
-   (repeatedly 6
-               (fn [] (future
-                        (try
-                          (dosync!! client
-                            (alter!! a inc)
-                            (alter!! b inc))
-                          (catch Throwable e (.printStackTrace e)))))))
-  [@a @b]
-
-
-  (def c (zk-ref client "/c" 0))
-  (def d (zk-ref client "/d" []))
-  (doall
-   (repeatedly 6
-               (fn [] (future
-                        (try
-                          (dosync!! client
-                            (alter!! d conj (alter!! c inc)))
-                          (catch Throwable e (.printStackTrace e)))))))
-  [@c @d]
-
-
-  (def a (zk-ref client "/a"))
-  (def b (zk-ref client "/b"))
-  (doall
-   (repeatedly 6
-               (fn [] (future
-                        (try
-                          (dosync!! client
-                            (alter!! a inc)
-                            (alter!! b inc))
-                          (catch Throwable e (.printStackTrace e)))))))
-
-  )
-
-(comment
-
-  (use 'avout.core :reload-all)
-  (require '[zookeeper :as zk])
-
-  (def client (zk/connect "127.0.0.1"))
-  (def a (local-ref client "/a" 0))
-  (def b (local-ref client "/b" 0))
-  @a
-  @b
-  (dosync!! client
-    (alter!! a inc)
-    (alter!! b #(+ @a %)))
-
-
-  ;; from another repl
-  (use 'avout.core :reload-all)
-  (require '[zookeeper :as zk])
-
-  ;; connect to the stm
-  (def stm (zk/connect "127.0.0.1"))
-
-  ;; no initial value, connect to an existing distributed ref
-  (def a (local-ref stm "/a"))
-  (def b (local-ref stm "/b"))
-
-  (dosync!! stm
-    (alter!! a inc)
-    (alter!! b #(+ @a %)))
-
-
-  ;; concurrency test
-  (use 'avout.core :reload-all)
-  (require '[zookeeper :as zk])
-
-  ;; connect to the stm
-  (def client (zk/connect "127.0.0.1"))
-
-  (zk/delete-all client "/a")
-  (zk/delete-all client "/b")
-  (def a (local-ref client "/a" 0))
-  (def b (local-ref client "/b" 0))
-  (doall
-   (repeatedly 6
-               (fn [] (future
-                        (try
-                          (dosync!! client
-                            (alter!! a inc)
-                            (alter!! b inc))
-                          (catch Throwable e (.printStackTrace e)))))))
-  [@a @b]
-
-
-  (def c (local-ref client "/c" 0))
-  (def d (local-ref client "/d" []))
-  (doall
-   (repeatedly 6
-               (fn [] (future
-                        (try
-                          (dosync!! client
-                            (alter!! d conj (alter!! c inc)))
-                          (catch Throwable e (.printStackTrace e)))))))
-  [@c @d]
-
-
-  (def a (local-ref client "/a"))
-  (def b (local-ref client "/b"))
-  (doall
-   (repeatedly 6
-               (fn [] (future
-                        (try
-                          (dosync!! client
-                            (alter!! a inc)
-                            (alter!! b inc))
-                          (catch Throwable e (.printStackTrace e)))))))
-
-)
