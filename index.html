@@ -389,13 +389,6 @@ code { color: #555555; }
 
 </pre>
 
-<P>The first time you use avout, you'll need to initialize it.</p>
-
-<pre class="brush: clojure">
-(init-stm client)
-
-</pre>
-
 <p>Now create a distributed atom, you'll need to pass the ZooKeeper client, a ZooKeeper compliant name (must start with a slash), and an optional initial-value. Skip the initial value if you want to connect to an existing distributed Atom.</p>
 
 <pre class="brush: clojure">
@@ -449,6 +442,15 @@ Alter both Refs within a dosync!! block.
   (ref-set!! r1 []))
 
 </pre>
+
+<p>To connect to a remote Ref or Atom without clobbering a current value that may have been set by a remote client, just leave off the initial value when calling zk-ref or zk-atom. For instance, to access the existing r0 and r1 Refs from a remote host:</p>
+
+<pre class="brush: clojure">
+(def r0 (zk-ref client "/r0"))
+(def r1 (zk-ref client "/r1"))
+
+</pre>
+
 
 <p>Move a member from one group to another, across two different ref types (zk and mongo), transactionally so that the member always exist in one group or the other, but never neither group nor both groups.</p>
 
