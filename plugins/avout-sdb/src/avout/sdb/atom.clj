@@ -56,7 +56,8 @@
   (swap [this f args]
     (let [MAX-RETRY-COUNT 100
           BACKOFF-BASE 1
-          BACKOFF-FACTOR 2.5]
+          BACKOFF-FACTOR 2.5
+          BACKOFF-MAX 1000]
       (loop [i 0, backoff BACKOFF-BASE]
         (let [old-value (.getState atomState)
               new-value (apply f old-value args)]
@@ -67,7 +68,9 @@
               (do (loop [spin 0]
                     (when (< spin backoff)
                       (recur (inc spin))))
-                  (recur (inc i) (* backoff BACKOFF-FACTOR)))
+                  (recur (inc i)
+                         (let [b (* backoff BACKOFF-FACTOR)]
+                           (if (< b BACKOFF-MAX) b BACKOFF-MAX))))
               (throw (RuntimeException. "Reached maximum number of retries: " MAX-RETRY-COUNT))))))))
 
   (reset [this new-value]
