@@ -52,15 +52,20 @@
   (swap [this f] (.swap this f nil))
 
   (swap [this f args]
-    (let [MAX-RETRY-COUNT 100]
-      (loop [i 0]
+    (let [MAX-RETRY-COUNT 100
+          BACKOFF-BASE 1
+          BACKOFF-FACTOR 2.5]
+      (loop [i 0, backoff BACKOFF-BASE]
         (let [old-value (.getState atomState)
               new-value (apply f old-value args)]
           (atoms/validate @validator new-value)
           (if (.compareAndSet this old-value new-value)
             new-value
             (if (< i MAX-RETRY-COUNT)
-              (recur (inc i))
+              (do (loop [spin 0]  ;; spin baby spin
+                    (when (< spin backoff)
+                      (recur (inc spin))))
+                  (recur (inc i) (* backoff BACKOFF-FACTOR)))
               (throw (RuntimeException. "Reached maximum number of retries: " MAX-RETRY-COUNT))))))))
 
   (reset [this new-value]
