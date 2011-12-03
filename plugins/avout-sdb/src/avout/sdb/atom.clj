@@ -1,26 +1,28 @@
-(ns avout.atoms.sdb
+(ns avout.sdb.atom
   (:use avout.state)
   (:require [avout.sdb :as sdb]
             [avout.atoms :as atoms])
   (:import clojure.lang.IRef))
 
-(deftype SDBStateContainer [client domain-name name]
+(deftype SDBStateContainer [client domainName name]
 
   StateContainer
 
-  (initStateContainer [this])
+  (initStateContainer [this]
+    (when-not (seq (sdb/get-attributes client domainName name))
+      (sdb/put-attributes client domainName name [{:name "value" :value (pr-str nil)}])))
 
   (destroyStateContainer [this]
-    (sdb/delete-attributes client domain-name name [{:name "value"}]))
+    (sdb/delete-attributes client domainName name [{:name "value"}]))
 
   (getState [this]
-    (let [data (sdb/get-attributes client domain-name name)]
-      (if (get data "value")
+    (let [data (sdb/get-attributes client domainName name)]
+      (if (contains? data "value")
           (read-string (get data "value"))
-          (throw (RuntimeException. "Atom value unbound")))))
+          (throw (RuntimeException. "sdb-atom unbound")))))
 
   (setState [this new-value]
-    (sdb/put-attributes client domain-name name [{:name "value" :value (pr-str new-value)}])))
+    (sdb/put-attributes client domainName name [{:name "value" :value (pr-str new-value)}])))
 
 (defn zk-sdb-atom
   ([zk-client sdb-client domain-name name init-value & {:keys [validator]}]
@@ -62,7 +64,7 @@
           (if (.compareAndSet this old-value new-value)
             new-value
             (if (< i MAX-RETRY-COUNT)
-              (do (loop [spin 0]  ;; spin baby spin
+              (do (loop [spin 0]
                     (when (< spin backoff)
                       (recur (inc spin))))
                   (recur (inc i) (* backoff BACKOFF-FACTOR)))
@@ -94,8 +96,10 @@
      (doto (SDBDistributedAtom. sdb-client domain-name name
                                 (SDBStateContainer. sdb-client domain-name name)
                                 (atom validator))
+       .init
        (.reset init-value)))
   ([sdb-client domain-name name]
-     (SDBDistributedAtom. sdb-client domain-name name
-                          (SDBStateContainer. sdb-client domain-name name)
-                          (atom nil))))
+     (doto (SDBDistributedAtom. sdb-client domain-name name
+                                (SDBStateContainer. sdb-client domain-name name)
+                                (atom nil))
+       .init)))

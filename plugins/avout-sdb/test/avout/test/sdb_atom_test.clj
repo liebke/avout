@@ -1,7 +1,7 @@
 (ns avout.test.sdb-atom-test
   (:use avout.core
         avout.sdb
-        avout.atoms.sdb
+        avout.sdb.atom
         clojure.test))
 
   (defn timer [f]
