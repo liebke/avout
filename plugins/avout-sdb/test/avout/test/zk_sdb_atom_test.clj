@@ -1,4 +1,4 @@
-(ns avout.test.atom-test
+(ns avout.test.zk-sdb-atom-test
   (:use avout.core
         avout.sdb
         avout.atoms.sdb
@@ -59,7 +59,7 @@
         SECRET-KEY (get (System/getenv) "SECRET_KEY")
         _ (println "'" ACCESS-KEY "' : '" SECRET-KEY "'")
         sdb (sdb-client ACCESS-KEY SECRET-KEY)
-        a (sdb-atom client sdb "test-domain" "/a-test" [])
+        a (zk-sdb-atom client sdb "test-domain" "/a-test" [])
         test-results (atom [])
         _ (dotimes [i run-count]
             (let [threads (inc (rand-int max-threads))
