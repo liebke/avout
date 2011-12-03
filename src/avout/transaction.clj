@@ -305,7 +305,7 @@
               (reset! commitPoint (next-point client))
               (update-values this)
               (trigger-watches this)
-              (update-txn-state this COMMITTED)
+              (update-txn-state this COMMITTING COMMITTED)
               (trim-stm-history client @commitPoint)
               (update-caches this))
             (catch Error e (when-not (retryex? e) (throw e)))
