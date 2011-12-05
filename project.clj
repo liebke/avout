@@ -1,4 +1,4 @@
-(defproject avout "0.5.2"
+(defproject avout "0.5.3"
   :description "Avout: Distributed State in Clojure"
   :dependencies [[org.clojure/clojure "1.3.0"]
                  [zookeeper-clj "0.9.1"]]
