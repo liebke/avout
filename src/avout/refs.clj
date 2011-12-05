@@ -66,7 +66,7 @@
 
   StateCache
   (invalidateCache [this]
-    (zk/children client (str nodeName cfg/TXN) :watcher (fn [event] (.invalidateCache this)))
+    (zk/exists client nodeName :watcher (fn [event] (.invalidateCache this)))
     (swap! cache assoc :valid false))
 
   (getCache [this]
