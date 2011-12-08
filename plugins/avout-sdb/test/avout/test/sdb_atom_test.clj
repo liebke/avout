@@ -54,8 +54,8 @@
 (deftest write-skew
   (let [run-count 100
         max-threads 10
-        ACCESS-KEY (get (System/getenv) "ACCESS_KEY")
-        SECRET-KEY (get (System/getenv) "SECRET_KEY")
+        ACCESS-KEY (get (System/getenv) "AWS_ACCESS_KEY")
+        SECRET-KEY (get (System/getenv) "AWS_SECRET_KEY")
         _ (println "'" ACCESS-KEY "' : '" SECRET-KEY "'")
         sdb (sdb-client ACCESS-KEY SECRET-KEY)
         a (sdb-atom sdb "test-domain" "/a-test" [])

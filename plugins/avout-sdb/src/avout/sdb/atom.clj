@@ -45,6 +45,7 @@
     (.destroyStateContainer atomState))
 
   avout.atoms.AtomReference
+
   (compareAndSet [this old-value new-value]
     (atoms/validate @validator new-value)
     (sdb/put-attributes client domainName nodeName

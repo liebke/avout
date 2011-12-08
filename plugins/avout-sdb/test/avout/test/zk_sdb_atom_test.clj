@@ -55,8 +55,8 @@
   (let [run-count 100
         max-threads 10
         client (connect "127.0.0.1")
-        ACCESS-KEY (get (System/getenv) "ACCESS_KEY")
-        SECRET-KEY (get (System/getenv) "SECRET_KEY")
+        ACCESS-KEY (get (System/getenv) "AWS_ACCESS_KEY")
+        SECRET-KEY (get (System/getenv) "AWS_SECRET_KEY")
         _ (println "'" ACCESS-KEY "' : '" SECRET-KEY "'")
         sdb (sdb-client ACCESS-KEY SECRET-KEY)
         a (zk-sdb-atom client sdb "test-domain" "/a-test" [])
