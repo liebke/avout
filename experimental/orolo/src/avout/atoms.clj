@@ -72,3 +72,8 @@
 
   (getValidator [this] @validator))
 
+(defn datom
+  ([name initializer config]
+     (initializer name config))
+  ([name init-value initializer config]
+     (initializer name init-value config)))
