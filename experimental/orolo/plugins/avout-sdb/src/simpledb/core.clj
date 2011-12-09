@@ -58,7 +58,7 @@ Asia Pacific (Tokyo) Region             sdb.ap-northeast-1.amazonaws.com
 
 (comment
 
-  (use 'avout.sdb :reload-all)
+  (use 'simpledb.core :reload-all)
   (def ACCESS-KEY (get (System/getenv) "ACCESS_KEY"))
   (def SECRET-KEY (get (System/getenv) "SECRET_KEY"))
   (def sdb (sdb-client ACCESS-KEY SECRET-KEY))

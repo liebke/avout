@@ -43,7 +43,11 @@
                                          (atom nil))
        .init)))
 
-
+(defn sdb-initializer
+  ([name {:keys [sdb-client domain-name]}]
+     (sdb-atom sdb-client domain-name name))
+  ([name init-value {:keys [sdb-client domain-name]}]
+     (sdb-atom sdb-client domain-name name init-value)))
 
 (comment
   (use 'simpledb.core)
