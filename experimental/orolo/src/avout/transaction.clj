@@ -33,7 +33,7 @@
   (let [new-info (swap!! ref-info
                          (fn [current-info]
                            (if (tagged? current-info initializer config)
-                             current-value
+                             current-info
                              (update-in current-info [:txid] identity txid))))]
     (= (:txid new-info) txid)))
 
