@@ -17,3 +17,8 @@
   "Cannot use standard reset! because Clojure expects a clojure.lang.Atom."
   ([atom old-value new-value] (.compareAndSet atom old-value new-value)))
 
+(defn datom
+  ([name initializer config]
+     (initializer name config))
+  ([name init-value initializer config]
+     (initializer name init-value config)))
