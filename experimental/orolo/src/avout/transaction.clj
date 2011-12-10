@@ -1,25 +1,33 @@
 (ns avout.transaction
   (:use avout.core))
 
-(defn init-clock [initializer config]
-  (datom "/stm/clock" 0 initializer config))
+(defn init-stm [initializer config]
+  (when-let [txids (datom "/stm/txns" initializer config)]
+    (doseq [t txids] (.destroy (datom (str "/stm/txns/" t) initializer config))))
+  (when-let [refs (datom "/stm/refs" initializer config)]
+    (doseq [r refs] (.destroy (datom (str "/stm/refs/" r) initializer config))))
+  {:clock  (datom "/stm/clock" 0 initializer config)
+   :txns (datom "/stm/txns" [] initializer config)
+   :refs (datom "/stm/refs" [] initializer config)
+   :initializer initializer
+   :config config})
 
-(defn next-point [clock]
-  (swap!! clock inc))
+(defn next-point [stm]
+  (swap!! (:clock stm) inc))
 
-(defn init-txn-info [clock initializer config]
-  (let [txid (next-point clock)]
-    (datom (str "/stm/txn/" txid) {:txid txid, :state :RUNNING} initializer config)))
+(defn init-txn-info [stm]
+  (let [txid (next-point stm)]
+    (datom (str "/stm/txns/" txid) {:txid txid, :state :RUNNING} (:initializer stm) (:config stm))))
 
-(defn get-txn-info [txid initializer config]
-  (datom (str "/stm/txn/" txid) initializer config))
+(defn get-txn-info [stm txid]
+  (datom (str "/stm/txns/" txid) (:initializer stm) (:config stm)))
 
 (defn init-ref-info
-  ([name initilizer config]
-     (datom (str "/stm/refs/" name) {:history [], :txid nil} initilizer config)))
+  ([stm name]
+     (datom (str "/stm/refs/" name) {:history [], :txid nil} (:initializer stm) (:config stm))))
 
-(defn get-ref-info [name initializer config]
-  (datom (str "/stm/refs/" name) initializer config))
+(defn get-ref-info [stm name]
+  (datom (str "/stm/refs/" name) (:initializer stm) (:config stm)))
 
 (defn current-state? [tinfo & states]
   (reduce #(or %1 (= (:state tinfo) %2)) false states))
@@ -41,6 +49,6 @@
   (let [tinfo (swap!! txn-info update-in [:state] #(if (= old-state %) new-state old-state))]
     (= (:state tinfo) new-state)))
 
-(defn set-commit-point [clock txn-info]
-  (swap!! txn-info update-in [:commit-point] (fn [old-value] (next-point clock))))
+(defn set-commit-point [stm txn-info]
+  (swap!! txn-info update-in [:commit-point] (fn [old-value] (next-point stm))))
 
