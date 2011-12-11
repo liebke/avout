@@ -106,6 +106,9 @@
         lock (SDBLeasedLock. client domain-name name request-id locked lock-info)]
     lock))
 
+(defn sdb-initializer [name {:keys [sdb-client domain-name]}]
+  (sdb-leased-lock sdb-client domain-name name))
+
 (comment
 
   (use 'avout.sdb :reload-all)
