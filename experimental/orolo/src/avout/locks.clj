@@ -68,5 +68,5 @@
             ~else-exp)
           (finally (when @locked# (.unlock ~lock)))))))
 
-(defn distributed-lease-lock [name initializer config]
+(defn distributed-leased-lock [name initializer config]
   (initializer name config))
