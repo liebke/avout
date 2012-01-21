@@ -1,0 +1,13 @@
+# avout-ddb
+
+A example of using Amazaon's DynamoDB (DDB) as a backend state-store for Avout.
+
+## Testing
+
+To run the tests set the environment variables AWS_ACCESS_KEY and AWS_SECRET_KEY to your AWS credentials.
+
+## License
+
+Copyright (C) 2011 David Edgar Liebke and Relevance Inc.
+
+Distributed under the Eclipse Public License, the same as Clojure.
