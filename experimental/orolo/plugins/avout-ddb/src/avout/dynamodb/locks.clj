@@ -107,8 +107,7 @@
         lock (DynamoDBLeasedLock. client table-name name request-id locked lock-info)]
     lock))
 
-#_(defn dynamodb-initializer [name {:keys [ddb-client table-name]}]
-  (dynamodb-leased-lock ddb-client table-name name))
+
 
 (comment
 

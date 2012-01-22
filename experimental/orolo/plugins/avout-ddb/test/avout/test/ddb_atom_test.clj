@@ -1,11 +1,17 @@
-(ns avout.test.sdb-atom-test
+(ns avout.test.ddb-atom-test
   (:use avout.core
-        simpledb.core
-        avout.sdb.atom
-        clojure.test))
+        clojure.test)
+  (:import (java.util UUID)))
 
+;; Need to set Log property before requiring anything that
+;; uses the AWS's DynamoDB SDK in order to prevent console logging
+;; during testing.
 (System/setProperty "org.apache.commons.logging.Log"
                     "org.apache.commons.logging.impl.NoOpLog")
+
+(use 'dynamodb.core
+     'avout.dynamodb.atom)
+
 (defn timer [f]
   (let [start (System/nanoTime)]
     (f)
@@ -18,7 +24,7 @@
       (future
         (try
           (deliver (nth times i) (timer (fn [] (swap!! a #(conj % (inc (count %)))))))
-          (catch Throwable e (println "sdb-atom-write-skew-test deliver ex: ") (.printStackTrace e)))))
+          (catch Throwable e (println "dynamodb-atom-write-skew-test deliver ex: ") (.printStackTrace e)))))
     (let [res  (loop [j 0]
                  (let [v @a]
                    (if (= (count v) n)
@@ -61,12 +67,14 @@
 (deftest write-skew
   (let [run-count 100
         max-threads 10
-        ACCESS-KEY (get (System/getenv) "AWS_ACCESS_KEY")
+        ACCESS-KEY (get (System/getenv) "AWS_ACCESS_KEY_ID")
         SECRET-KEY (get (System/getenv) "AWS_SECRET_KEY")
         _ (println "'" ACCESS-KEY "' : '" SECRET-KEY "'")
-        sdb (doto (sdb-client ACCESS-KEY SECRET-KEY :endpoint "sdb.us-west-1.amazonaws.com")
-              (create-domain "test-domain"))
-        a (sdb-atom sdb "test-domain" "a" [])
+        ddb (dynamodb-client ACCESS-KEY SECRET-KEY)
+;        ddb (doto (dynamodb-client ACCESS-KEY SECRET-KEY :endpoint "dynamodb.us-west-1.amazonaws.com")
+;              (create-table "test-table" "name"))
+        uuid (str (UUID/randomUUID))
+        a (dynamodb-atom ddb "test" (str "a-" uuid) [])
         test-results (atom [])
         _ (dotimes [i run-count]
             (let [threads (inc (rand-int max-threads))

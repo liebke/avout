@@ -34,6 +34,9 @@ Asia Pacific (Tokyo) Region             dynamodb.ap-northeast-1.amazonaws.com
          (.setEndpoint client endpoint))
        client)))
 
+(defn list-tables [^AmazonDynamoDBClient client]
+  (into #{} (seq (.getTableNames (.listTables client)))))
+
 (defn create-table
   ""
   [^AmazonDynamoDBClient client ^String table-name ^String hash-key-name
@@ -44,8 +47,8 @@ Asia Pacific (Tokyo) Region             dynamodb.ap-northeast-1.amazonaws.com
              ^long kb-write-per-sec]
       :or {string-hash-key? true
            string-range-key? true
-           kb-read-per-sec 10
-           kb-write-per-sec 10}}]
+           kb-read-per-sec 5
+           kb-write-per-sec 5}}]
   (let [prov-req (-> (ProvisionedThroughput.)
                      (.withReadCapacityUnits kb-read-per-sec)
                      (.withWriteCapacityUnits kb-write-per-sec))
@@ -66,7 +69,8 @@ Asia Pacific (Tokyo) Region             dynamodb.ap-northeast-1.amazonaws.com
     (.createTable client req)))
 
 (defn get-item [^AmazonDynamoDBClient client ^String table-name ^String key-value]
-  (let [item (-> (.getItem client (GetItemRequest. table-name (Key. (AttributeValue. key-value))))
+  (let [k (Key. (AttributeValue. key-value))
+        item (-> (.getItem client (GetItemRequest. table-name k))
                  .getItem)]
     (when item
       (reduce (fn [m k]

@@ -61,7 +61,7 @@
 (deftest write-skew
   (let [run-count 100
         max-threads 10
-        ACCESS-KEY (get (System/getenv) "AWS_ACCESS_KEY")
+        ACCESS-KEY (get (System/getenv) "AWS_ACCESS_KEY_ID")
         SECRET-KEY (get (System/getenv) "AWS_SECRET_KEY")
         _ (println "'" ACCESS-KEY "' : '" SECRET-KEY "'")
         sdb (doto (sdb-client ACCESS-KEY SECRET-KEY :endpoint "sdb.us-west-1.amazonaws.com")
