@@ -77,7 +77,7 @@
                       "org.apache.commons.logging.impl.NoOpLog")
   (use 'dynamodb.core)
   (use 'avout.core)
-  (use 'avout.dynamodb.atom)
+  (use 'avout.dynamodb.atom :reload)
   (def aws-access-key-id (get (System/getenv) "AWS_ACCESS_KEY_ID"))
   (def aws-secret-key (get (System/getenv) "AWS_SECRET_KEY"))
   (def ddb (dynamodb-client aws-access-key-id aws-secret-key))
@@ -85,8 +85,8 @@
   (def table-name "example")
   (init-dynamodb-table ddb table-name)
   
-  (def a0 (dynamodb-atom ddb table-name "a" 0))
-  @a
+  (def a0 (dynamodb-atom ddb table-name "a0" 0))
+  @a0
   (swap!! a0 inc)
 
   (def a1 (dynamodb-atom ddb table-name "a1" []))
