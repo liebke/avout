@@ -111,7 +111,7 @@
   ([atom new-value] (.reset atom new-value)))
 
 (defn compare-and-set!!
-  "Cannot use standard reset! because Clojure expects a clojure.lang.Atom."
+  "Cannot use standard compare-and-set! because Clojure expects a clojure.lang.Atom."
   ([atom old-value new-value] (.compareAndSet atom old-value new-value)))
 
 ;; ZK-based atom implementation
