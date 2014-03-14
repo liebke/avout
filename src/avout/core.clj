@@ -4,6 +4,7 @@
             [avout.transaction :as tx]
             [avout.config :as cfg]
             [avout.locks :as locks]
+            [avout.client-handle :as handle]
             [zookeeper :as zk]
             avout.refs.zk
             avout.refs.local
@@ -23,12 +24,12 @@
      (init-stm client)))
 
 (defn connect
-  "Returns a ZooKeeper client, and initializes the STM if it doesn't already exist."
+  "Returns a client handle, and initializes the STM if it doesn't already exist."
   ([& args]
-     (let [client (apply zk/connect args)]
-       (when-not (zk/exists client cfg/*stm-node*)
-         (init-stm client))
-       client)))
+     (let [client-handle (apply handle/make-zookeeper-client-handle args)]
+       (when-not (zk/exists (.getClient client-handle) cfg/*stm-node*)
+         (init-stm (.getClient client-handle)))
+       (.getClient client-handle))))
 
 ;; Distributed versions of Clojure's standard Ref functions
 
