@@ -35,8 +35,7 @@
 (defmacro dosync!!
   "Distributed version of Clojure's dosync macro."
   ([client & body]
-     `(if (or (coll? '~client)
-              (not (instance? org.apache.zookeeper.ZooKeeper ~client)))
+     `(if (not (instance? org.apache.zookeeper.ZooKeeper ~client))
         (throw (RuntimeException. "First argument to dosync!! must be a ZooKeeper client instance."))
         (do (tx/create-local-transaction ~client)
             (tx/run-in-transaction ~client (fn [] ~@body))))))
