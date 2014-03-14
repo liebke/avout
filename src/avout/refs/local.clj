@@ -5,7 +5,7 @@
             [avout.util :as util]))
 
 
-(deftype LocalVersionedStateContainer [client name state]
+(deftype LocalVersionedStateContainer [client-handle name state]
 
   VersionedStateContainer
 

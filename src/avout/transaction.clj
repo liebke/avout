@@ -33,22 +33,25 @@
 (defn retryex? [e] (= "RETRY" (.getMessage e)))
 
 (defn init-ref
-  ([client ref-node]
+  ([client-handle ref-node]
+   (let [client (.getClient client-handle)]
      (zk/create-all client (str ref-node cfg/HISTORY) :persistent? true)
-     (zk/create client (str ref-node cfg/TXN) :persistent? true)))
+     (zk/create client (str ref-node cfg/TXN) :persistent? true))))
 
 (defn reset-ref
-  ([client ref-node]
+  ([client-handle ref-node]
+   (let [client (.getClient client-handle)]
      (zk/delete-all client ref-node)
-     (init-ref client ref-node)))
+     (init-ref client ref-node))))
 
 (defn extract-point [path]
   (subs path (- (count path) 12) (count path)))
 
 (defn next-point
-  ([client]
+  ([client-handle]
      (extract-point
-      (zk/create client (str cfg/*stm-node* cfg/HISTORY cfg/NODE-DELIM cfg/PT-PREFIX)
+      (zk/create (.getClient client-handle)
+                 (str cfg/*stm-node* cfg/HISTORY cfg/NODE-DELIM cfg/PT-PREFIX)
                  :persistent? true
                  :sequential? true))))
 
@@ -61,39 +64,39 @@
   (str cfg/*stm-node* cfg/HISTORY cfg/NODE-DELIM point))
 
 (defn update-state
-  ([client point new-state]
-     (zk/set-data client (point-node point) new-state -1))
-  ([client point old-state new-state]
-     (zk/compare-and-set-data client (point-node point) old-state new-state)))
+  ([client-handle point new-state]
+     (zk/set-data (.getClient client-handle) (point-node point) new-state -1))
+  ([client-handle point old-state new-state]
+     (zk/compare-and-set-data (.getClient client-handle) (point-node point) old-state new-state)))
 
 (defn update-txn-state
   ([txn new-state]
-     (zk/set-data (.client txn) (point-node (deref (.txid txn))) new-state -1)
+     (zk/set-data (.getClient (.client-handle txn)) (point-node (deref (.txid txn))) new-state -1)
      (reset! (.state txn) new-state))
   ([txn old-state new-state]
-     (when (zk/compare-and-set-data (.client txn) (point-node (deref (.txid txn))) old-state new-state)
+     (when (zk/compare-and-set-data (.getClient (.client-handle txn)) (point-node (deref (.txid txn))) old-state new-state)
        (reset! (.state txn) new-state))))
 
-(defn get-history [client ref-name]
-  (zk/children client (str ref-name cfg/HISTORY)))
+(defn get-history [client-handle ref-name]
+  (zk/children (.getClient client-handle) (str ref-name cfg/HISTORY)))
 
 (defn state= [s1 s2]
   (Arrays/equals s1 s2))
 
-(defn current-state? [client txid & states]
+(defn current-state? [client-handle txid & states]
   (when txid
     (try
-      (let [state (:data (zk/data client (point-node txid)))]
+      (let [state (:data (zk/data (.getClient client-handle) (point-node txid)))]
         (reduce #(or %1 (state= state %2)) false states))
       (catch KeeperException$NoNodeException e nil))))
 
 (defn get-last-committed-point
   "Gets the last committed point for the given Ref."
-  ([client ref-name]
-     (let [history (util/sort-sequential-nodes > (get-history client ref-name))]
+  ([client-handle ref-name]
+     (let [history (util/sort-sequential-nodes > (get-history client-handle ref-name))]
        (loop [[h & hs] history]
          (when-let [[txid commit-pt] (parse-version h)]
-           (if (current-state? client txid COMMITTED)
+           (if (current-state? client-handle txid COMMITTED)
              h
              (recur hs)))))))
 
@@ -101,15 +104,16 @@
   (let [point (util/extract-id current-point)]
     (when (and (zero? (mod point cfg/REF-GC-INTERVAL)) (pos? point))
       (doseq [h history-to-remove]
-        (zk/delete (.client ref) (str (.getName ref) cfg/HISTORY cfg/NODE-DELIM h) :async? true)
+        (zk/delete (.getClient (.client-handle ref)) (str (.getName ref) cfg/HISTORY cfg/NODE-DELIM h) :async? true)
         (.deleteStateAt (.refState ref) h)))))
 
-(defn trim-stm-history [client current-point]
+(defn trim-stm-history [client-handle current-point]
   (let [point (util/extract-id current-point)]
     (when (and (zero? (mod point cfg/STM-GC-INTERVAL)) (pos? point))
       (future
         (try
-          (let [points-to-keep (into #{} (map #(first (parse-version %))
+          (let [client (.getClient client-handle)
+                points-to-keep (into #{} (map #(first (parse-version %))
                                               (mapcat #(zk/children client (str cfg/*stm-node* cfg/REFS cfg/NODE-DELIM % cfg/HISTORY))
                                                       (zk/children client (str cfg/*stm-node* cfg/REFS)))))
                 history (drop-last cfg/MAX-STM-HISTORY
@@ -126,12 +130,12 @@
 (defn get-committed-point-before
   "Gets the committed point before the given one."
   ([ref point]
-     (let [history (util/sort-sequential-nodes > (get-history (.client ref) (.getName ref)))
+     (let [history (util/sort-sequential-nodes > (get-history (.client-handle ref) (.getName ref)))
            point-int (util/extract-id point)]
        (loop [[h & hs] history]
          (when-let [[txid commit-pt] (parse-version h)]
            (if (and (<= (util/extract-id commit-pt) point-int)
-                    (current-state? (.client ref) txid COMMITTED))
+                    (current-state? (.client-handle ref) txid COMMITTED))
              (do (trim-ref-history ref point hs)
                  h)
              (recur hs)))))))
@@ -139,21 +143,21 @@
 (defn behind-committing-point?
   "Returns true when the given txn's read-point is behind either a committed or committing point."
   ([ref point]
-     (when-let [history (util/sort-sequential-nodes > (get-history (.client ref) (.getName ref)))]
+     (when-let [history (util/sort-sequential-nodes > (get-history (.client-handle ref) (.getName ref)))]
        (loop [[h & hs] history]
          (when-let [[txid commit-pt] (parse-version h)]
-           (if (current-state? (.client ref) txid COMMITTING COMMITTED)
+           (if (current-state? (.client-handle ref) txid COMMITTING COMMITTED)
              (> (util/extract-id commit-pt) (util/extract-id point))
              (recur hs)))))))
 
 (defn write-commit-point [txn ref]
-  (zk/create (.client txn) (str (.getName ref) cfg/HISTORY cfg/NODE-DELIM (deref (.txid txn)) "-" (deref (.commitPoint txn)))
+  (zk/create (.getClient (.client-handle txn)) (str (.getName ref) cfg/HISTORY cfg/NODE-DELIM (deref (.txid txn)) "-" (deref (.commitPoint txn)))
              :persistent? true))
 
 (defn trigger-watches
   [txn]
   (doseq [r (keys (deref (.values txn)))]
-    (zk/set-data (.client txn) (.getName r) (data/to-bytes 0) -1)))
+    (zk/set-data (.getClient (.client-handle txn)) (.getName r) (data/to-bytes 0) -1)))
 
 (defn process-commutes [txn]
   ;;TODO
@@ -176,34 +180,34 @@
   (and (barge-time-elapsed? txn)
        (or (< (util/extract-id (deref (.txid txn))) (util/extract-id tagged-txid))
            (> (deref (.retryCount txn)) cfg/LAST-CHANCE-BARGE-RETRY))
-       (update-state (.client txn) tagged-txid RUNNING KILLED)))
+       (update-state (.client-handle txn) tagged-txid RUNNING KILLED)))
 
 (defn block-and-bail [txn]
   (.await (deref (.latch txn)) cfg/BLOCK-WAIT-MSEC TimeUnit/MILLISECONDS)
   (throw retryex))
 
-(defn tagged? [client ref-node]
+(defn tagged? [client-handle ref-node]
   "Returns the txid of the running transaction that tagged this ref, otherwise it returns nil"
-  (when-let [txid (first (zk/children client (str ref-node cfg/TXN)))]
-    (when (current-state? client txid RUNNING COMMITTING)
+  (when-let [txid (first (zk/children (.getClient client-handle) (str ref-node cfg/TXN)))]
+    (when (current-state? client-handle txid RUNNING COMMITTING)
       txid)))
 
 (defn write-tag [txn ref]
   (if (behind-committing-point? ref (deref (.readPoint txn)))
     (block-and-bail txn)
-    (do (zk/delete-children (.client txn) (str (.getName ref) cfg/TXN))
-        (zk/create (.client txn) (str (.getName ref) cfg/TXN cfg/NODE-DELIM (deref (.txid txn)))
+    (do (zk/delete-children (.getClient (.client-handle txn)) (str (.getName ref) cfg/TXN))
+        (zk/create (.getClient (.client-handle txn)) (str (.getName ref) cfg/TXN cfg/NODE-DELIM (deref (.txid txn)))
                    :persistent? false))))
 
 (defn sync-ref [ref]
-  (.sync (.client ref) (str cfg/*stm-node* cfg/HISTORY) nil nil)
-  (.sync (.client ref) (str (.getName ref) cfg/HISTORY) nil nil))
+  (.sync (.getClient (.client-handle ref)) (str cfg/*stm-node* cfg/HISTORY) nil nil)
+  (.sync (.getClient (.client-handle ref)) (str (.getName ref) cfg/HISTORY) nil nil))
 
 (defn try-tag [txn ref]
   (sync-ref ref)
   (locks/if-lock-with-timeout (.writeLock (.lock ref)) cfg/LOCK-WAIT-MSEC TimeUnit/MILLISECONDS
     (do
-      (when-let [tagged-txid (tagged? (.client txn) (.getName ref))]
+      (when-let [tagged-txid (tagged? (.client-handle txn) (.getName ref))]
         (when (and (not= (deref (.txid txn)) tagged-txid)
                    (not (barge txn tagged-txid)))
           (block-and-bail txn)))
@@ -219,11 +223,11 @@
        (.setStateAt (.refState r) (get values r) point)))))
 
 (defn reincarnate-txn [txn]
-  (reset! (.txid txn) (next-point (.client txn)))
+  (reset! (.txid txn) (next-point (.client-handle txn)))
   (update-txn-state txn RETRY))
 
 (defn stop [txn]
-  (when-not (current-state? (.client txn) (deref (.txid txn)) COMMITTED)
+  (when-not (current-state? (.client-handle txn) (deref (.txid txn)) COMMITTED)
     (try
       (if (deref (.txid txn))
         (update-txn-state txn RETRY)
@@ -237,7 +241,7 @@
 
 (defn running? [txn]
   (when (deref (.txid txn))
-    (current-state? (.client txn) (deref (.txid txn)) RUNNING COMMITTING)))
+    (current-state? (.client-handle txn) (deref (.txid txn)) RUNNING COMMITTING)))
 
 (defn invalidate-cache-and-retry [txn ref]
   (.invalidateCache ref)
@@ -248,7 +252,7 @@
    (doseq [r (keys values)]
      (.setCacheAt r (get values r) (deref (.commitPoint txn))))))
 
-(deftype LockingTransaction [returnValue client txid startPoint
+(deftype LockingTransaction [returnValue client-handle txid startPoint
                              startTime readPoint commitPoint
                              values sets commutes ensures latch
                              retryCount state]
@@ -291,7 +295,7 @@
         (do
           (try
             (reset! retryCount retry-count)
-            (reset! readPoint (next-point client))
+            (reset! readPoint (next-point client-handle))
             (reset! latch (CountDownLatch. 1))
             (when (zero? retry-count)
               (reset! txid @readPoint)
@@ -302,25 +306,25 @@
             (when (update-txn-state this RUNNING COMMITTING)
               ;(process-commutes this) ;; TODO
               (validate-values this)
-              (reset! commitPoint (next-point client))
+              (reset! commitPoint (next-point client-handle))
               (update-values this)
               (trigger-watches this)
               (update-txn-state this COMMITTING COMMITTED)
-              (trim-stm-history client @commitPoint)
+              (trim-stm-history client-handle @commitPoint)
               (update-caches this))
             (catch Error e (when-not (retryex? e) (throw e)))
             (finally (stop this)))
-          (when-not (current-state? client @txid COMMITTED)
+          (when-not (current-state? client-handle @txid COMMITTED)
             (recur (inc retry-count))))
         (throw (RuntimeException. "Transaction failed after reaching retry limit"))))
     @returnValue))
 
 (def local-transaction (ThreadLocal.))
 
-(defn create-local-transaction [client]
+(defn create-local-transaction [client-handle]
   (.set local-transaction
         (LockingTransaction. (atom nil)         ;; returnValue
-                             client             ;; client
+                             client-handle      ;; client-handle
                              (atom nil)         ;; txid
                              (atom nil)         ;; startPoint
                              (atom nil)         ;; startTime
@@ -335,13 +339,13 @@
                              (atom nil)         ;; state
                              )))
 
-(defn get-local-transaction [client]
+(defn get-local-transaction [client-handle]
   (or (.get local-transaction)
-      (do (create-local-transaction client)
+      (do (create-local-transaction client-handle)
           (.get local-transaction))))
 
-(defn run-in-transaction [client f]
+(defn run-in-transaction [client-handle f]
   (try
-    (.runInTransaction (get-local-transaction client) f)
+    (.runInTransaction (get-local-transaction client-handle) f)
     (catch Throwable e (println "run-in-transaction exception: " e (.printStackTrace e)))))
 

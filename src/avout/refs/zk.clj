@@ -8,7 +8,7 @@
 
 ;; ZK data implementation
 
-(deftype ZKVersionedStateContainer [client name]
+(deftype ZKVersionedStateContainer [client-handle name]
 
   VersionedStateContainer
 
@@ -18,13 +18,13 @@
 
   (getStateAt [this version]
     (try
-      (let [{:keys [data stat]} (zk/data client (str name cfg/HISTORY cfg/NODE-DELIM version))]
+      (let [{:keys [data stat]} (zk/data (.getClient client-handle) (str name cfg/HISTORY cfg/NODE-DELIM version))]
         (util/deserialize-form data))
       ;; in the rare event that the requested value has already been GCed, throw retryex
       (catch org.apache.zookeeper.KeeperException$NoNodeException e (throw tx/retryex))))
 
   (setStateAt [this value version]
-    (zk/set-data client (str name cfg/HISTORY cfg/NODE-DELIM version) (util/serialize-form value) -1))
+    (zk/set-data (.getClient client-handle) (str name cfg/HISTORY cfg/NODE-DELIM version) (util/serialize-form value) -1))
 
   (deleteStateAt [this version]
     ;; This method doesn't need to clean up, because Avout's GC cleans

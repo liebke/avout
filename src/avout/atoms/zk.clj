@@ -4,19 +4,22 @@
             [zookeeper.data :as data]
             [avout.util :as util]))
 
-(deftype ZKStateContainer [client dataNode]
+(deftype ZKStateContainer [client-handle dataNode]
 
   StateContainer
 
   (initStateContainer [this]
-    (zk/create-all client dataNode))
+    (zk/create-all (.getClient client-handle) dataNode))
 
   (destroyStateContainer [this]
-    (zk/delete-all client dataNode))
+    (zk/delete-all (.getClient client-handle) dataNode))
 
   (getState [this]
-    (let [{:keys [data stat]} (zk/data client dataNode)]
+    (let [{:keys [data stat]} (zk/data (.getClient client-handle) dataNode)]
       (util/deserialize-form data)))
 
-  (setState [this new-value] (zk/set-data client dataNode (util/serialize-form new-value) -1)))
+  (setState [this new-value]
+    (zk/set-data (.getClient client-handle)
+                 dataNode
+                 (util/serialize-form new-value) -1)))
 
