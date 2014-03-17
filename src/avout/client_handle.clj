@@ -2,7 +2,8 @@
   (:require [zookeeper :as zk]))
 
 (defprotocol ClientHandle
-  (getClient [this]))
+  (getClient [this])
+  (close [this]))
 
 (defn make-zookeeper-client-handle
   "Creates a new ZooKeeper client handle that simply wraps a single ZooKeeper
@@ -12,4 +13,6 @@
   (let [client (apply zk/connect args)]
     (reify ClientHandle
       (getClient [this]
-        client))))
+        client)
+      (close [this]
+        (zk/close client)))))
