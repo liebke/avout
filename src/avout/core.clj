@@ -26,9 +26,14 @@
      (init-stm client))))
 
 (defn connect
-  "Returns a client handle, and initializes the STM if it doesn't already exist."
-  ([& args]
-     (let [client-handle (apply handle/make-zookeeper-client-handle args)]
+  "Returns a client handle, and initializes the STM if it doesn't already exist.
+  Optionally can give connect an existing client-handle to use, instead of creating
+  a new one with make-zookeeper-client-handle.
+   Example: (avout/connect :client-handle (avout-contrib.curator/make-curator-zookeeper-client-handle ...))"
+  ([& [override value :as args]]
+     (let [client-handle (if (= override :client-handle)
+                           value
+                           (apply handle/make-zookeeper-client-handle args))]
        (when-not (zk/exists (.getClient client-handle) cfg/*stm-node*)
          (init-stm client-handle))
        client-handle)))
