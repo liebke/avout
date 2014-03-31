@@ -23,15 +23,15 @@
 
 ;; distributed reference implementation
 
-(deftype DistributedReference [client nodeName refState cache validator watches lock]
+(deftype DistributedReference [client-handle nodeName refState cache validator watches lock]
   Identity
   (init [this]
-    (tx/init-ref client nodeName)
+    (tx/init-ref client-handle nodeName)
     (.invalidateCache this) ;; sets initial watch
     (.initVersionedStateContainer refState))
 
   (destroy [this]
-    (zk/delete-all client nodeName)
+    (zk/delete-all client-handle nodeName)
     (.destroyVersionedStateContainer refState))
 
   (getName [this] nodeName)
@@ -39,13 +39,13 @@
   TransactionReference
 
   (setRef [this value]
-    (let [t (tx/get-local-transaction client)]
+    (let [t (tx/get-local-transaction client-handle)]
       (if (txn-running? t) ; (tx/state= (deref (.state t)) tx/RUNNING)
         (.doSet t this value)
         (throw (RuntimeException. "Must run set-ref!! within the dosync!! macro")))))
 
   (alterRef [this f args]
-    (let [t (tx/get-local-transaction client)]
+    (let [t (tx/get-local-transaction client-handle)]
       (if (txn-running? t) ; (tx/state= (deref (.state t)) tx/RUNNING)
         (.doSet t this (apply f (.doGet t this) args))
         (throw (RuntimeException. "Must run alter!! within the dosync!! macro")))))
@@ -55,18 +55,18 @@
   (ensureRef [this] (throw (UnsupportedOperationException.)))
 
   (version [this]
-    (let [t (tx/get-local-transaction client)]
-      (if (tx/get-local-transaction client)
-        (tx/get-committed-point-before client (.getName this) (.readPoint ref))
-        (tx/get-last-committed-point client (.getName this)))))
+    (let [t (tx/get-local-transaction client-handle)]
+      (if (tx/get-local-transaction client-handle)
+        (tx/get-committed-point-before client-handle (.getName this) (.readPoint ref))
+        (tx/get-last-committed-point client-handle (.getName this)))))
 
   (clearLocks [this]
-    (zk/delete-children client (str nodeName cfg/TXN))
-    (zk/delete-children client (str nodeName cfg/LOCK)))
+    (zk/delete-children client-handle (str nodeName cfg/TXN))
+    (zk/delete-children client-handle (str nodeName cfg/LOCK)))
 
   StateCache
   (invalidateCache [this]
-    (zk/exists client nodeName :watcher (fn [event] (.invalidateCache this)))
+    (zk/exists (.getClient client-handle) nodeName :watcher (fn [event] (.invalidateCache this)))
     (swap! cache assoc :valid false))
 
   (getCache [this]
@@ -82,11 +82,11 @@
 
   IRef
   (deref [this]
-    (let [t (tx/get-local-transaction client)]
-      (if (txn-running? t) ; (tx/get-local-transaction client)
+    (let [t (tx/get-local-transaction client-handle)]
+      (if (txn-running? t) ; (tx/get-local-transaction client-handle)
         (.doGet t this)
         (or (when cfg/*use-cache* (.getCache this))
-            (when-let [commit-point (tx/get-last-committed-point client (.getName this))]
+            (when-let [commit-point (tx/get-last-committed-point client-handle (.getName this))]
               (.setCacheAt this (.getStateAt refState commit-point) commit-point))))))
 
   ;; callback params: akey, aref, old-val, new-val, but old-val will always be nil
@@ -96,9 +96,9 @@
                       (when (= :NodeDataChanged (:event-type event))
                        (let [new-value (.deref this)]
                          (callback key this nil new-value)))
-                      (zk/exists client nodeName :watcher watcher-fn)))]
+                      (zk/exists (.getClient client-handle) nodeName :watcher watcher-fn)))]
       (swap! watches assoc key watcher)
-      (zk/exists client nodeName :watcher watcher)
+      (zk/exists (.getClient client-handle) nodeName :watcher watcher)
       this))
 
   (getWatches [this] @watches)
@@ -111,14 +111,14 @@
 
 
 
-(defn distributed-ref [client name ref-state & {:keys [validator]}]
+(defn distributed-ref [client-handle name ref-state & {:keys [validator]}]
   (let [node-name (str cfg/*stm-node* cfg/REFS name)]
-    (doto (avout.refs.DistributedReference. client
+    (doto (avout.refs.DistributedReference. client-handle
                                            node-name
                                            ref-state
                                            (atom {}) ;; cache
                                            (atom validator)
                                            (atom {}) ;; watchers
-                                           (locks/distributed-read-write-lock client :lock-node (str node-name cfg/LOCK)))
+                                           (locks/distributed-read-write-lock client-handle :lock-node (str node-name cfg/LOCK)))
      .init)))
 

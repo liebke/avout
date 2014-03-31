@@ -4,6 +4,7 @@
             [avout.transaction :as tx]
             [avout.config :as cfg]
             [avout.locks :as locks]
+            [avout.client-handle :as handle]
             [zookeeper :as zk]
             avout.refs.zk
             avout.refs.local
@@ -11,35 +12,42 @@
 
 (defn init-stm
   "Called the first time the STM is used, creates necessary ZooKeeper nodes."
-  ([client]
+  ([client-handle]
+   (let [client (.getClient client-handle)]
      (zk/create-all client (str cfg/*stm-node* cfg/HISTORY) :persistent? true)
      (zk/create client (str cfg/*stm-node* cfg/REFS) :persistent? true)
-     (zk/create client (str cfg/*stm-node* cfg/ATOMS) :persistent? true)))
+     (zk/create client (str cfg/*stm-node* cfg/ATOMS) :persistent? true))))
 
 (defn reset-stm
   "Used to clear and re-initialize the STM."
-  ([client]
+  ([client-handle]
+   (let [client (.getClient client-handle)]
      (zk/delete-all client cfg/*stm-node*)
-     (init-stm client)))
+     (init-stm client))))
 
 (defn connect
-  "Returns a ZooKeeper client, and initializes the STM if it doesn't already exist."
-  ([& args]
-     (let [client (apply zk/connect args)]
-       (when-not (zk/exists client cfg/*stm-node*)
-         (init-stm client))
-       client)))
+  "Returns a client handle, and initializes the STM if it doesn't already exist.
+  Optionally can give connect an existing client-handle to use, instead of creating
+  a new one with make-zookeeper-client-handle.
+   Example: (avout/connect :client-handle (avout-contrib.curator/make-curator-zookeeper-client-handle ...))"
+  ([& [override value :as args]]
+     (let [client-handle (if (= override :client-handle)
+                           value
+                           (apply handle/make-zookeeper-client-handle args))]
+       (when-not (zk/exists (.getClient client-handle) cfg/*stm-node*)
+         (init-stm client-handle))
+       client-handle)))
 
 ;; Distributed versions of Clojure's standard Ref functions
 
 (defmacro dosync!!
   "Distributed version of Clojure's dosync macro."
-  ([client & body]
-     `(if (or (coll? '~client)
-              (not (instance? org.apache.zookeeper.ZooKeeper ~client)))
-        (throw (RuntimeException. "First argument to dosync!! must be a ZooKeeper client instance."))
-        (do (tx/create-local-transaction ~client)
-            (tx/run-in-transaction ~client (fn [] ~@body))))))
+  ([client-handle & body]
+     `(if-not (and (instance? avout.client_handle.ClientHandle ~client-handle)
+                   (instance? org.apache.zookeeper.ZooKeeper (.getClient ~client-handle)))
+        (throw (RuntimeException. "First argument to dosync!! must be a ClientHandle that wraps a ZooKeeper instance."))
+        (do (tx/create-local-transaction ~client-handle)
+            (tx/run-in-transaction ~client-handle (fn [] ~@body))))))
 
 (defn ref-set!!
   "Distributed version of Clojure's ref-set function."
@@ -61,38 +69,38 @@
    to hold its state and Clojure's printer/reader (pr-str/read-string) for
    serialization. Note: ZooKeeper has a 1 megabyte limit on the size of data in its
    data fields."
-  ([client name init-value & {:keys [validator]}]
-     (let [r (doto (refs/distributed-ref client name
+  ([client-handle name init-value & {:keys [validator]}]
+     (let [r (doto (refs/distributed-ref client-handle name
                                          (avout.refs.zk.ZKVersionedStateContainer.
-                                          client
+                                          client-handle
                                           (str cfg/*stm-node* cfg/REFS name)))
                (set-validator! validator))]
-       (dosync!! client (ref-set!! r init-value))
+       (dosync!! client-handle (ref-set!! r init-value))
        r))
-  ([client name]
+  ([client-handle name]
      ;; for connecting to an existing ref only
-     (refs/distributed-ref client name
+     (refs/distributed-ref client-handle name
                            (avout.refs.zk.ZKVersionedStateContainer.
-                             client
+                             client-handle
                              (str cfg/*stm-node* cfg/REFS name)))))
 
 (defn local-ref
   "Returns an instance of an Avout Ref that holds its state locally, but can
    be used in dosync!! transactions with distributed Refs since Avout Refs
    cannot participate in dosync transactions with Clojure's in-memory Refs."
-  ([client name init-value & {:keys [validator]}]
-     (let [r (doto (refs/distributed-ref client name
+  ([client-handle name init-value & {:keys [validator]}]
+     (let [r (doto (refs/distributed-ref client-handle name
                                          (avout.refs.local.LocalVersionedStateContainer.
-                                           client
+                                           client-handle
                                            (str cfg/*stm-node* cfg/REFS name) (atom {})))
                (set-validator! validator))]
-       (dosync!! client (ref-set!! r init-value))
+       (dosync!! client-handle (ref-set!! r init-value))
        r))
-  ([client name]
+  ([client-handle name]
      ;; for connecting to an existing ref only
-     (refs/distributed-ref client name
+     (refs/distributed-ref client-handle name
                            (avout.refs.local.LocalVersionedStateContainer.
-                             client
+                             client-handle
                              (str cfg/*stm-node* cfg/REFS name) (atom {})))))
 
 
@@ -121,10 +129,17 @@
    to hold its state and Clojure's printer/reader (pr-str/read-string) for
    serialization. Note: ZooKeeper has a 1 megabyte limit on the size of data in its
    data fields."
-  ([client name init-value & {:keys [validator]}]
-     (doto (atoms/distributed-atom client name (avout.atoms.zk.ZKStateContainer. client (str name "/data")))
+  ([client-handle name init-value & {:keys [validator]}]
+     (doto (atoms/distributed-atom client-handle
+                                   name
+                                   (avout.atoms.zk.ZKStateContainer. client-handle (str name "/data")))
        (set-validator! validator)
        (.reset init-value)))
-  ([client name] ;; for connecting to an existing atom only
-     (atoms/distributed-atom client name (avout.atoms.zk.ZKStateContainer. client (zk/create-all client (str name "/data"))))))
+  ([client-handle name] ;; for connecting to an existing atom only
+     (atoms/distributed-atom
+       client-handle
+       name
+       (avout.atoms.zk.ZKStateContainer.
+         client-handle
+         (zk/create-all (.getClient client-handle) (str name "/data"))))))
 

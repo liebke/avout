@@ -19,8 +19,8 @@
 ;; DistributedAtom implementation
 
 (defn trigger-watchers
-  [client node-name]
-  (zk/set-data client node-name (data/to-bytes 0) -1))
+  [client-handle node-name]
+  (zk/set-data (.getClient client-handle) node-name (data/to-bytes 0) -1))
 
 (defn validate [validator value]
   (when (and validator (not (validator value)))
@@ -30,10 +30,10 @@
   ;; trigger cache invalidation watchers
   (.setState (.atomState atom) (.setCache atom value)))
 
-(deftype DistributedAtom [client nodeName atomState cache validator watches lock]
+(deftype DistributedAtom [client-handle nodeName atomState cache validator watches lock]
   Identity
   (init [this]
-    (zk/create-all client nodeName :persistent? true)
+    (zk/create-all (.getClient client-handle) nodeName :persistent? true)
     (.invalidateCache this)
     (.initStateContainer atomState))
 
@@ -48,7 +48,7 @@
     (locks/with-lock (.writeLock lock)
       (if (= old-value (or (.getCache this) (.setCache this (.getState atomState))))
         (do (set-state this new-value)
-            (trigger-watchers client nodeName)
+            (trigger-watchers client-handle nodeName)
             true)
         false)))
 
@@ -59,14 +59,14 @@
       (let [new-value (apply f (or (.getCache this) (.setCache this (.getState atomState))) args)]
         (validate @validator new-value)
         (set-state this new-value)
-        (trigger-watchers client nodeName)
+        (trigger-watchers client-handle nodeName)
         new-value)))
 
   (reset [this new-value]
     (locks/with-lock (.writeLock lock)
       (validate @validator new-value)
       (set-state this new-value)
-      (trigger-watchers client nodeName)
+      (trigger-watchers client-handle nodeName)
       new-value))
 
   IRef
@@ -81,9 +81,9 @@
                       (when (= :NodeDataChanged (:event-type event))
                         (let [new-value (.deref this)]
                          (callback key this nil new-value)))
-                      (zk/exists client nodeName :watcher watcher-fn)))]
+                      (zk/exists (.getClient client-handle) nodeName :watcher watcher-fn)))]
       (swap! watches assoc key watcher)
-      (zk/exists client nodeName :watcher watcher)
+      (zk/exists (.getClient client-handle) nodeName :watcher watcher)
       this))
 
   (getWatches [this] @watches)
@@ -104,17 +104,17 @@
     value)
 
   (invalidateCache [this]
-    (zk/exists (.client this) (.getName this)
+    (zk/exists (.getClient client-handle) (.getName this)
                :watcher (fn [event] (.invalidateCache this)))
     (swap! cache assoc :valid false)))
 
-(defn distributed-atom [client name atom-data & {:keys [validator]}]
+(defn distributed-atom [client-handle name atom-data & {:keys [validator]}]
   (let [node-name (str cfg/*stm-node* cfg/ATOMS name)]
-    (doto (DistributedAtom. client
+    (doto (DistributedAtom. client-handle
                             node-name
                             atom-data
                             (atom {}) ;; cache
                             (atom validator)
                             (atom {})
-                            (locks/distributed-read-write-lock client :lock-node (str node-name cfg/LOCK)))
+                            (locks/distributed-read-write-lock client-handle :lock-node (str node-name cfg/LOCK)))
       .init)))

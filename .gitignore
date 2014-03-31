@@ -8,3 +8,7 @@ pom.xml
 *#
 .#*
 .DS_Store
+.lein-repl-history
+.nrepl-port
+target/
+*.iml

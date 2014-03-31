@@ -22,34 +22,36 @@
              (recur remaining current)))))))
 
 (defn create-lock-request-node
-  ([client lock-node request-id]
+  ([client-handle lock-node request-id]
      (let [path (str lock-node "/" request-id "-")
-           request-node (zk/create-all client path :sequential? true)]
+           request-node (zk/create-all (.getClient client-handle) path :sequential? true)]
        (subs request-node (inc (count lock-node))))))
 
 (defn delete-lock-request-node
-  ([client lock-node request-id]
+  ([client-handle lock-node request-id]
+   (let [client (.getClient client-handle)]
      (when-let [request-node (first (zk/filter-children-by-prefix client lock-node request-id))]
-       (zk/delete client (str lock-node "/" request-node)))))
+       (zk/delete client (str lock-node "/" request-node))))))
 
 (defn delete-lock
-  ([client lock-node]
-     (zk/delete-all client lock-node)))
+  ([client-handle lock-node]
+     (zk/delete-all (.getClient client-handle) lock-node)))
 
 (defn queued-requests
-  ([client lock-node]
-     (zk/children client lock-node)))
+  ([client-handle lock-node]
+     (zk/children (.getClient client-handle) lock-node)))
 
 (defn get-owner
-  ([client lock-node]
-     (when-let [requests (zk/children client lock-node)]
+  ([client-handle lock-node]
+     (when-let [requests (zk/children (.getClient client-handle) lock-node)]
        (first (zutil/sort-sequential-nodes requests)))))
 
 (defn submit-lock-request
-  ([client lock-node request-id lock-watcher]
+  ([client-handle lock-node request-id lock-watcher]
      (let [monitor-lock (ReentrantLock. true)
            watched-node-event (.newCondition monitor-lock)
-           lock-request-node (create-lock-request-node client lock-node request-id)
+           client (.getClient client-handle)
+           lock-request-node (create-lock-request-node client-handle lock-node request-id)
            watcher (fn [event] (try (.lock  monitor-lock) (.signal watched-node-event) (finally (.unlock monitor-lock))))]
        (future
          (try (.lock monitor-lock)
@@ -70,10 +72,11 @@
 ;; READ LOCK FUNCTIONS
 
 (defn submit-read-lock-request
-  ([client lock-node request-id lock-watcher]
+  ([client-handle lock-node request-id lock-watcher]
      (let [monitor-lock (ReentrantLock. true)
            watched-node-event (.newCondition monitor-lock)
-           lock-request-node (create-lock-request-node client lock-node request-id)
+           client (.getClient client-handle)
+           lock-request-node (create-lock-request-node client-handle lock-node request-id)
            watcher (fn [event] (try (.lock  monitor-lock) (.signal watched-node-event) (finally (.unlock monitor-lock))))]
        (future
          (try (.lock monitor-lock)
