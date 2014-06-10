@@ -3,7 +3,8 @@
   (:use [clojure.test])
   (:import [java.util.concurrent TimeUnit]
            [java.util.concurrent.locks ReentrantLock])
-  (:require [zookeeper :as zk]))
+  (:require [zookeeper :as zk]
+            [avout.client-handle :refer [make-zookeeper-client-handle]]))
 
 
 (defn test-lock
@@ -105,12 +106,13 @@
        @state)))
 
 (deftest locking-test
-  (let [client (zk/connect "127.0.0.1")
+  (let [client-handle (make-zookeeper-client-handle "127.0.0.1")
+        client (.getClient client-handle)
         _ (zk/delete-all client "/testing-lock")
         _ (zk/delete-all client "/testing-lock-timeout")
-        locking-results (test-lock (distributed-lock client :lock-node "/testing-lock"))
-        locking-timeout-results (test-lock-with-timeout (distributed-lock client :lock-node "/testing-lock-timeout"))
-        conditions-results (test-conditions (distributed-lock client :lock-node "/conditions-lock"))]
+        locking-results (test-lock (distributed-lock client-handle :lock-node "/testing-lock"))
+        locking-timeout-results (test-lock-with-timeout (distributed-lock client-handle :lock-node "/testing-lock-timeout"))
+        conditions-results (test-conditions (distributed-lock client-handle :lock-node "/conditions-lock"))]
 
     ;; distributed-lock should behave just like ReentrantLock
     (is (= locking-results (test-lock (ReentrantLock. true))))
