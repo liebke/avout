@@ -88,7 +88,7 @@
 
   (getWatches [this] @watches)
 
-  (removeWatch [this key] (swap! watches (dissoc key)) this)
+  (removeWatch [this key] (swap! watches dissoc key) this)
 
   (setValidator [this f] (reset! validator f))
 
