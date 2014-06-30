@@ -9,7 +9,7 @@
   StateContainer
 
   (initStateContainer [this]
-    (zk/create-all (.getClient client-handle) dataNode))
+    (zk/create-all (.getClient client-handle) dataNode :persistent? true))
 
   (destroyStateContainer [this]
     (zk/delete-all (.getClient client-handle) dataNode))
