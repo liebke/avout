@@ -2,6 +2,7 @@
 
 
 <a name="about-avout" />
+
 ## About Avout
 
 <p><a href="http://avout.io">Avout</a> brings Clojure's in-memory model of <a href="http://clojure.org/state">state</a> to distributed application development by providing a distributed implementation of Clojure's <a href="http://en.wikipedia.org/wiki/Multiversion_concurrency_control">Multiversion Concurrency Control</a> (MVCC) <a href="http://en.wikipedia.org/wiki/Software_transactional_memory">STM</a> along with distributable, durable, and extendable versions of Clojure's <a href="http://clojure.org/atoms">Atom</a> and <a href="http://clojure.org/refs">Ref</a> concurrency primitives.</p>
